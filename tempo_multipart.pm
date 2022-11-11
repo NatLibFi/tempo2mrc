@@ -144,19 +144,29 @@ sub copy_multipart_isrc($$) {
     # Sometimes the order of tracks is not the same as the order of ISRCs,
     # Thus we have to do this in two steps (1: gather and sort, 2: add to base).
 
+    # Gather:
     my @content = ();
     foreach my $curr_record ( @{$marc_record_array_ref} ) {
-	my @f024 = $curr_record->get_all_matching_fields('024', undef);	
+	my @f024 = $curr_record->get_all_matching_fields('024', undef);
+	my $f773 = $curr_record->get_first_matching_field('773');
+	my $g = undef;
+	if ( defined($f773) && $f773->{content} =~ /\x1Fg([^\x1F]+)/ ) {
+	    $g = $1;
+	    $g =~ s/^(.)/\l$1/;
+	}
 	# Should we copy other identifiers?
 	foreach my $isrc_field ( @f024 ) {
 	    #die($#f024);
 	    if ( $isrc_field->{content} =~ /^0/ ) {
-		push @content, $isrc_field->{content};
+	 	my $new_content = $isrc_field->{content};
+		if ( defined($g) ) { $new_content .= "\x1Fq$g"; }
+		push @content, $new_content;
 	    }
 	}
     }
-
+    # Sort:
     @content = sort(@content);
+    # Add:
     foreach my $value ( @content ) {
 	add_marc_field($base_record_ref, '024', $value);
     }
