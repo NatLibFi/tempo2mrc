@@ -2,6 +2,7 @@ use strict;
 use tempo_utils;
 
 my $robust = 0;
+my $debug = 1;
 
 my $dd_regexp = get_dd_regexp();
 my $mm_regexp = get_mm_regexp();
@@ -51,32 +52,53 @@ sub recording_location_details2other_event_information_and_tracks($$) {
 }
 
 
-sub recording_location_details2place_of_event($) {
+
+
+sub recording_location_details2place_of_event2($) {
     my ( $recording_location_details_ref ) = @_;
-    my $place_of_the_event = undef;
 
     print STDERR "RLD2PoE: ", ${$recording_location_details_ref}, "\n";
 
+    
     # This is ugly/hacky. Will think of generic solution when we have more
     # relevant Tempo cases.
     my $countries = "(?:Englanti|Hollanti|Ranska|Ruotsi|Suomi|UK)";
+
     if ( ${$recording_location_details_ref} =~ s/^(?:Äänitysmaat: )?($countries(, $countries)*)\.?$// ) {
 	my $hits = $1;
 	${$recording_location_details_ref} =~ s/^\.$//;
 	return $hits;
     }
-    elsif ( ${$recording_location_details_ref} =~ /^(\S+): (\S+)(n kirkko)\.$/ && $1 eq $2 ) {
-	my $hit = $2.$3;
+    if ( ${$recording_location_details_ref} =~ /^(\D+)$/ ) {
+	my $location_part = ${$recording_location_details_ref};
 	${$recording_location_details_ref} = '';
-	return $hit;
+	return $location_part;
     }
-    elsif ( ${$recording_location_details_ref} =~ s/^(\D+) ($yyyy_regexp($mm_regexp($dd_regexp)?)?)/$2/ ) {
-	return $1;
+    if ( ${$recording_location_details_ref} =~ s/^(\D+) ($yyyy_regexp($mm_regexp($dd_regexp)?)?)/$2/ ) {
+	my $location_part = $1;
+	return $location_part;
+    }
+    
+    if ( $debug && ${$recording_location_details_ref} ) {
+	print STDERR "WARNING\tFailed to extract location from '",  ${$recording_location_details_ref}, "'\n";
     }
         
     return undef;
 }
 
+sub recording_location_details2place_of_event($) {
+    my ( $recording_location_details_ref ) = @_;
+    my $location_part = recording_location_details2place_of_event2($recording_location_details_ref);
+
+    # Avoid place name repetition (proto, extend later):
+    if ( $location_part =~ /^(\S+): (\S+)n kirkko/ && $1 eq $2 ) {
+	$location_part =~ s/^\S+ //;
+    }
+
+    $location_part =~ s/: /, /g;
+    
+    return $location_part;
+}
 
 sub recording_location_details2date_of_event($) {
     my ( $recording_location_details_ref ) = @_;
@@ -148,7 +170,7 @@ sub process_single_recording_location($$$) {
     my ( $other_event_information, $tracks ) = &recording_location_details2other_event_information_and_tracks(\$curr_rld, $is_classical_music);
     
     my $place_of_event = &recording_location_details2place_of_event(\$curr_rld);
-
+    
     my $date_of_event = &recording_location_details2date_of_event(\$curr_rld);
 
     if ( !$curr_rld ) { # Managed to extract all info
