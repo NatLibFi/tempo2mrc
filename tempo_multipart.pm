@@ -314,7 +314,7 @@ sub handle_multiparts($) {
 	
 
 	# Copy isrcs (field 024)
-	&copy_multipart_isrc($base_record_ref, $marc_record_array_ref);	
+	&copy_multipart_isrc($base_record_ref, \@records2merge);	
 	
 	# Create a 505 field
 	create_multipart_505($base_record_ref, \@records2merge);
