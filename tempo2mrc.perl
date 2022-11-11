@@ -2716,7 +2716,6 @@ sub process_tempo_data2($$$$) {
     ${$marc_record_ref}->fix_245_ind1();
     ${$marc_record_ref}->fix_nonfiling_character_fields(); # 245 IND2 etc
     
-    ${$marc_record_ref}->sort_fields();
 
     postprocess_asteri_links($marc_record_ref);
     
@@ -2917,8 +2916,13 @@ for ( my $i=0; $i <= $#input_files; $i++ ) {
 
     my $target_directory = &output_dir_or_error_dir2target_dir(\@marc_objects, $filename, $output_directory, $error_directory);
 
+    create_host_field_505(\@marc_objects);
+    # Sort after last field add:
+    foreach my $record ( @marc_objects ) {
+	$record->sort_fields();
+    }
+    
     if ( $debug ) {
-	create_host_field_505(\@marc_objects);
 	foreach my $record ( @marc_objects ) {
 	    # NB! Yle tracks are not necessary in the right order.
 	    # TODO: Sort comps by 773$g if needed.
