@@ -189,7 +189,8 @@ my %language2code = ( 'englanniksi' => 'eng',
 
 sub reject_batch($) {
     my $marc_records_ref = shift;
-    if ( $#{$marc_records_ref} == -1 ) {
+    my $n = $#{$marc_records_ref} + 1;
+    if ( $n == 0 ) {
 	print STDERR "BATCH REJECTED! NO RECORDS\n";
 	return 1;
     }
@@ -202,7 +203,7 @@ sub reject_batch($) {
 	foreach my $tag ( @required_tags ) {
 	    my $field = $record->get_first_matching_field($tag);
 	    if ( !defined($field) ) {
-		print STDERR "BATCH REJECTED! REASON: MISSING $tag FIELD\n";
+		print STDERR "BATCH REJECTED! REASON: MISSING $tag FIELD (Set of $n record(s))\n";
 		return 1;
 	    }
 	}
