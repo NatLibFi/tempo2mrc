@@ -307,7 +307,7 @@ sub handle_multiparts($) {
 	&copy_multipart_isrc($base_record_ref, $marc_record_array_ref);	
 	
 	# Create a 505 field
-	create_multipart_505($base_record_ref, $marc_record_array_ref);	
+	create_multipart_505($base_record_ref, \@records2merge);
 
 	# Create a 773 field for base, $g merges all multipart $gs
 	multipart_records2field_773_content($base_record_ref, \@records2merge);
