@@ -232,6 +232,14 @@ sub multipart_records2field_773_content($$) {
     
     my $f773_content = $f773[0]->{content};
     $f773_content =~ s/\x1Fg[^\x1F]+/\x1Fg$new_g/;
+
+    # Remove old 773 field(s) from the surviving multipart:
+    @f773 = ${$base_record_ref}->get_all_matching_fields('773', undef);
+    foreach my $field ( @f773 ) {
+	print STDERR "REMOVE ", $field->toString(), "\n";
+	${$base_record_ref}->remove_field($field);
+    }
+    # Add new field:
     add_marc_field($base_record_ref, '773', $f773_content);
 }
 
