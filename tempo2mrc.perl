@@ -2083,7 +2083,7 @@ sub add_935($$) {
     $mon += 1;
     if ( length($mon) == 1 ) { $mon = "0". $mon; }
     if ( length($mday) == 1 ) { $mday = "0". $mday; }
-    add_marc_field($marc_record_ref, '935', "  \x1FaFono${year}${mon}${mday}\x1F5VIOLA");
+    add_marc_field($marc_record_ref, '935', "  \x1FaTempo${year}${mon}${mday}\x1F5VIOLA");
     #}
 }
 
@@ -2763,16 +2763,23 @@ sub process_tempo_data {
 
     my @records = process_tempo_data2($prefix, $is_host, \@tempo_data, undef); 
 
+    
+    
     handle_multiparts(\@records);
     
     return @records;
 }
-    
+
+
+
+
 sub process_tempo_file($) {
     my $filename = shift;
     my $file_as_string = &file2string($filename);
     $file_as_string =~ s/\&amp;/&/g;
     my @tempo_data = json2tempo_data_string_array($file_as_string); 
+
+
     return process_tempo_data(@tempo_data);
 }
     
@@ -2878,6 +2885,24 @@ sub save_file($$) {
     return;
 }
 
+sub create_host_field_505($) {
+    my ( $records_ref ) = @_;
+    if ( $#{$records_ref} < 2 ) { return; }
+    my $host = (@{$records_ref})[0];
+    my $f505 = $host->get_first_matching_field('505');
+    if ( defined($f505) ) { return; } # No action required? (Added by multipart etc.?)
+    my @songs;
+    for ( my $i=1; $i <= $#{$records_ref}; $i++ ) {
+	my $f245 = ${$records_ref}[$i]->get_first_matching_field('245');
+	if ( defined($f245) && $f245->{content} =~ /\x1Fa([^\x1F]+)/ ) {
+	    my $song_name = $1;
+	    $song_name =~ s/\.?( +[=\-\/])?$//;
+	    $songs[$#songs+1] = $song_name;
+	}
+    }
+    my $value = join(' -- ', @songs);
+    add_marc_field(\$host, '505', "0 \x1Fa".$value.".");  
+}
 
 print STDERR ($#input_files+1), " input files to be processed...\n";
      
@@ -2893,6 +2918,7 @@ for ( my $i=0; $i <= $#input_files; $i++ ) {
     my $target_directory = &output_dir_or_error_dir2target_dir(\@marc_objects, $filename, $output_directory, $error_directory);
 
     if ( $debug ) {
+	create_host_field_505(\@marc_objects);
 	foreach my $record ( @marc_objects ) {
 	    # NB! Yle tracks are not necessary in the right order.
 	    # TODO: Sort comps by 773$g if needed.
