@@ -852,13 +852,16 @@ sub get_best_author($$$) {
 	my $composer = undef;
 	foreach my $auth_id ( sort keys %authors ) {
 	    if ( defined($authors{$auth_id}->{'säveltäjä'}) ) {
+		if ( !$hits ) {
+		    $composer = $auth_id;
+		}
 		$hits++;
-		$composer = $auth_id;
+
 	    }
 	}
-	# Don't give preference to any of the composers. They all go to 700...
-	# This is iffy...
-	if ( $hits == 1 ) { return $composer; }
+	# Host: Don't give preference to any of the composers. They all go to 700...
+	# This is still iffy...
+	if ( !$is_host || $hits == 1 ) { return $composer; }
 	return undef;
     }
 
