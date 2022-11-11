@@ -1749,9 +1749,12 @@ sub process_descriptions($$$$$) {
 	    }
 	    elsif ( $mess =~ /\S/ ) {
 		$mess = trim_all($mess);
+		#if ( $is_host && $mess =~ /(^|\. )(Esittelylehtinen|Tekstilehtinen) / ) {
 		if ( $mess =~ /(^|\. )(Esittelylehtinen|Tekstilehtinen) / ) {
-		    # Meneekö emosta jotain 300-kenttään?
-		    add_marc_field($marc_recordP, '500', "  \x1Fa$mess");
+		    if ( $is_host ) {
+			# Something to field 300 as well?
+			add_marc_field($marc_recordP, '500', "  \x1Fa$mess");
+		    }
 		}
 		elsif ( $is_host ) {
 		    # Apparently KS wanted this Sekä: restriction back in
@@ -2614,10 +2617,11 @@ sub process_tempo_data2($$$$) {
     # MARC: 300
     if ( $is_host ) {
 	extract_field_300($tempo_data_ref, $marc_record_ref, $customID, $is_sacd, $tempo_record_id, $physical_description, $media_as_per_title);
+	&process_descriptions2language_notes(\@descriptions, $marc_record_ref, $is_host);  # May update (host) 041 and 300. May add 546. Do only after 300 has been created
     }
+
     
-    &process_descriptions2language_notes(\@descriptions, $marc_record_ref, $is_host);  # May update 041 and 300. May add 546.
- 
+    
     # data/duration => 306
     if ( !$is_host ) {
 	&process_duration($prefix, $tempo_data_ref, $marc_record_ref);
@@ -2747,6 +2751,7 @@ sub process_tempo_data2($$$$) {
     return @marc_record_array;
 }
 
+
 sub process_tempo_data {
     my @tempo_data = @_;    
     my $is_host = 0;
@@ -2761,15 +2766,11 @@ sub process_tempo_data {
     }
 
     my @records = process_tempo_data2($prefix, $is_host, \@tempo_data, undef); 
-
-    
     
     handle_multiparts(\@records);
     
     return @records;
 }
-
-
 
 
 sub process_tempo_file($) {
