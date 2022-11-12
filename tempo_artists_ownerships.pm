@@ -845,12 +845,31 @@ sub get_best_author($$$) {
     my ( $authors_ref, $is_classical_music, $is_host ) = @_;
     my %authors = %{$authors_ref};
     # Unlike
+
+    my @auth_ids = sort keys %authors;
+
+    # If there's only one author in the record, make it 1XX:
+    if ( $#auth_ids == 0 ) {
+	return $auth_ids[0];
+    }
+
+    if ( 0 ) {
+	foreach my $auth_id ( @auth_ids ) {
+	    my $var = $authors{$auth_id};
+	    my %hash = %{$var};
+	    foreach my $key ( sort keys %hash ) {
+		print STDERR "GBA$is_classical_music $key: '", $hash{$key}, "'\n";
+	    }
+	    print STDERR "\n";
+	}
+    }
+
     
     # Composer:
     if ( $is_classical_music || !$is_host ) {
 	my $hits = 0;
 	my $composer = undef;
-	foreach my $auth_id ( sort keys %authors ) {
+	foreach my $auth_id ( @auth_ids ) {
 	    if ( defined($authors{$auth_id}->{'säveltäjä'}) ) {
 		if ( !$hits ) {
 		    $composer = $auth_id;
@@ -872,7 +891,7 @@ sub get_best_author($$$) {
     # Should this correspond with 245$c?
     my $hits = 0;
     my $musician = undef;
-    foreach my $auth_id ( sort keys %authors ) {
+    foreach my $auth_id ( @auth_ids ) {
 	if ( defined($authors{$auth_id}->{'esittäjä'}) ) {
 	    $hits++;
 	    $musician = $auth_id;
