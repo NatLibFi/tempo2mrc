@@ -605,6 +605,7 @@ sub normalize_musicians($) {
 sub description2musicians($) {
     my ( $description_ref ) = @_;
 
+    print STDERR "D2M ",  ${$description_ref}, "\n";
     if ( ${$description_ref} =~ s/(?:^| )((?:Jousisekstetin jäsenet|Jäsenet|Yhtyeen jäsenet): .*)$// ) {
 	my $musicians = $1;
 	normalize_musicians(\$musicians);
@@ -629,6 +630,7 @@ sub description2additional_musicians($) {
     # NB! We have never seen anything else after "Sekä:" (yet).
     # However, N=4 (2022-10-02)
     # Yes we have: ["Jäsenet: Arttur Teränen (kitara, taustalaulu). Juho Eskola (bassokitara). Eero Sampolahti (rummut, taustalaulu). Soittovapaa 19.8."]
+    
     if ( ${$description_ref} =~ s/ ?Sekä: ?(.*?)((?: Soittovapaa: .*)?)$/$2/ ) {
 	my $additional_musicians = $1;
 	&normalize_musicians(\$additional_musicians);
@@ -943,8 +945,8 @@ sub normalize_instrument($) {
     return $instrument;
 }
 
-sub process_performer_note($$$$$) {
-    my ( $prefix, $tempo_dataP, $marc_recordP, $descriptions_array_ref, $additional_musicians ) = @_;
+sub process_performer_note($$$$$$) {
+    my ( $prefix, $tempo_dataP, $marc_record_ref, $descriptions_array_ref, $additional_musicians, $field_511_content_ref ) = @_;
     my $prefix2 = "/$prefix/artists_master_ownerships";
     my @results = grep { index($_, $prefix2) == 0 } @{$tempo_dataP}; # non-desctructive
 
@@ -1009,11 +1011,11 @@ sub process_performer_note($$$$$) {
 	    }
 	}
 	elsif ( $line =~ /rights_type/ ||
-		$line =~ /(artist|instruments\[\d+\])\/(created_at|_id|ingestion_id|locale|updated_at) =/ ) {
+		$line =~ /(artist|birth_year|instruments\[\d+\])\/(created_at|_id|ingestion_id|locale|updated_at) =/ ) {
 	    # skip warnings
 	}
 	else {
-	    print STDERR "511 creation: skip '$line'\n";
+	    print STDERR "WARNING\t511 creation: skip '$line'\n";
 	}
 
     }
@@ -1044,8 +1046,27 @@ sub process_performer_note($$$$$) {
     
     if ( length($f511) > 0 ) {
 	# Check description
-	
-	add_marc_field($marc_recordP, '511', "0 \x1Fa$f511.");
+
+
+
+	my $content = "0 \x1Fa$f511.";
+	if ( ${$field_511_content_ref} ) {
+	    # Merge two 511 fields or die:
+	    # (Band name comes from here, and members from elsewhere)
+	    if ( ${$field_511_content_ref} =~ s/\x1Fa(Jäsenet|\S+ jäsenet):/\x1Fa$f511:/ ) {
+		return;
+	    }
+
+	    print STDERR "MULTI-511 ERROR/WARNING #1 for $f511:\n  '", ${$field_511_content_ref}, "'\n  '$content'\n";
+
+	    # Fallback: keep ${$field_511_content_ref} as it was,
+	    # and add this field as a separate field:
+	    add_marc_field($marc_record_ref, '511', $content);	    
+	    
+	}
+	else {
+	    ${$field_511_content_ref} = $content;
+	}
     }
 }
     
@@ -1647,6 +1668,31 @@ sub add_languages_to_041g($$) {
 
 }
 
+
+sub add_subfield_300e($) {
+    my ( $marc_record_ref ) = @_;
+    my $f300 = ${$marc_record_ref}->get_first_matching_field('300');
+    if ( defined($f300) ) {
+	if ( $f300->{content} =~ /\x1Fa/ ) {
+	    if ( index($f300->{content}, "\x1Fe") > -1 ) {
+		if ( index($f300->{content}, "\x1Fe1 tekstili") ) {
+		    # No need to add.
+		}
+		else {
+		    die(); # oops $e exists but with stange content
+		}
+	    }
+	    else {
+		print STDERR "Field 300: add subfield \$e1 tekstiliite\n";
+		$f300->{content} .= " +\x1Fe1 tekstiliite";
+	    }
+	}
+	else {
+	    die();
+	}
+    }
+}
+
 sub process_descriptions2language_notes($$$) {
     my ( $descriptions_ref, $marc_recordP, $is_host ) = @_;
 
@@ -1683,8 +1729,10 @@ sub process_descriptions2language_notes($$$) {
 
 	# typofixes:
 	$descriptions_ref->[$i] =~ s/sittelylehtien /sittelylehtinen /;
-	
-	while ( $descriptions_ref->[$i] =~ s/ ?($esittelylehtinen(?: (?:[a-z]|ä)+ksi,)*(?: (?:[a-z]|ä)+ksi ja)? (?:[a-z]|ä)+ksi\.) ?/ / ) {
+
+	my $add_300e = 0;
+	while ( $descriptions_ref->[$i] =~ s/(^| )($esittelylehtinen(?: (?:[a-z]|ä)+ksi,)*(?: (?:[a-z]|ä)+ksi ja)? (?:[a-z]|ä)+ksi\.)($| )/ / ) {
+	    $descriptions_ref->[$i] = trim_all($descriptions_ref->[$i]);
 	    $n_hits++;
 	    #if ( $n_hits > 1 ) { die(); }
 	    
@@ -1695,42 +1743,36 @@ sub process_descriptions2language_notes($$$) {
 	    # What's the difference between 'esittelylehtinen' and
 	    # 'tekstilehtinen'
 	    if ( $text =~ /(esittelylehtinen|libretto|tekstilehtinen)/i ) {
-		my $f300 = ${$marc_recordP}->get_first_matching_field('300');
-		if ( defined($f300) ) {
-		    if ( $f300->{content} =~ /\x1Fa/ ) {
-			if ( index($f300->{content}, "\x1Fe") > -1 ) {
-			    if ( index($f300->{content}, "\x1Fe1 tekstili") ) {
-				# No need to add.
-			    }
-			    else {
-				die(); # oops $e exists but with stange content
-			    }
-			}
-			else {
-			    $f300->{content} .= " +\x1Fe1 tekstiliite";
-			}
-		    }
-		    else {
-			die();
-		    }
-		}
-		# elsif ( !$robust ) { die(); }
-
+		$add_300e = 1;
 		add_languages_to_041g($marc_recordP, $text);
 	    }
 	}
-	# Try to detect if we missed something:
-	if ( $descriptions_ref->[$i] =~ /\s/ &&
-	     $descriptions_ref->[$i] =~ /(?:esittelylehti|tekstilehti)/i ) {
-	    print STDERR "WARNING\t", $descriptions_ref->[$i], "\n";
+
+	if ( $descriptions_ref->[$i] =~ s/^$esittelylehtinen( esityskielellä)?\.$//i ) {
+	    $add_300e = 1;
 	}
+	
+	# Try to detect if we missed something:
+	if ( $descriptions_ref->[$i] =~ /$esittelylehtinen/i ) {
+	     #$descriptions_ref->[$i] =~ /\s/ &&
+	     #$descriptions_ref->[$i] =~ /(?:esittelylehti|tekstilehti)/i ) {
+	    print STDERR "WARNING\t'", $descriptions_ref->[$i], "'\n";
+	    die();
+	}
+
+	if ( $add_300e ) { # move to a separate_function
+	    add_subfield_300e($marc_recordP);
+	}
+	# elsif ( !$robust ) { die(); }
+
+
     }
 }
 
 
 
 sub process_descriptions($$$$$) {
-    my ( $is_host, $prefix, $tempo_dataP, $marc_recordP, $descriptions_ref) = @_;
+    my ( $is_host, $prefix, $tempo_dataP, $marc_recordP, $descriptions_ref, $field_511_content_ref) = @_;
 
     for ( my $i=0; $i <= $#{$descriptions_ref}; $i++ ) {
 	my $curr_description = $descriptions_ref->[$i];
@@ -1761,7 +1803,32 @@ sub process_descriptions($$$$$) {
 		    # Apparently KS wanted this Sekä: restriction back in
 		    # 2016-02-22
 		    $mess =~ s/([^\.])$/$1./;
-		    add_marc_field($marc_recordP, '511', "0 \x1Fa$mess");
+		    if ( $debug ) {
+			print STDERR "descriptions => 511\n";
+		    }
+
+
+
+		    
+		    if ( !${$field_511_content_ref} ) {
+			${$field_511_content_ref} = "0 \x1Fa$mess";
+		    }
+		    elsif ( ${$field_511_content_ref} =~ /\x1Fa([^\x1F]+)\.$/ ) {
+			    my $a = $1;
+			    if ( index($mess, $a) == 0 ) {
+				# "Ville Laihala" vs "Ville Laihala ja Saattajat": latter wins
+				${$field_511_content_ref} = "0 \x1Fa$mess";
+			    }
+			    else {
+				print STDERR "MULTI-511 #2. Mergable?\n  '", ${$field_511_content_ref}, "'\n  '0 \x1Fa$mess\n";
+				add_marc_field($marc_recordP, '511', "0 \x1Fa$mess"); # Store this as well
+			    }
+
+		    }
+		    else {
+			die();
+		    }
+			    
 		}
 		elsif ( $mess ) {
 		    print STDERR "TODO or SKIP\tProcess description\t'$mess'\n";
@@ -2260,8 +2327,7 @@ sub process_tempo_data2($$$$) {
     
     
     my $is_classical_music = &is_classical_music($tempo_data_ref, $prefix);
-
-    my $curr_field = undef;
+    my $field_511_content = '';
 
     if ( 1 ) {
 	my $n = $#{$tempo_data_ref} +1;
@@ -2305,6 +2371,8 @@ sub process_tempo_data2($$$$) {
     my $desc_additional_musicians = undef;
 
     if ( $#descriptions > -1 ) {
+	if ( $#descriptions > 0 ) { die(); }
+	$descriptions[0]=~ s/(^| )(Soittovapaa|Julkaisu[ a-z]*) (\d+.)+$//; # TODO: Check whether TM is interested in these
 	$physical_description = &descriptions2physical_description(\@descriptions);
 	$desc_musicians = &description2musicians(\$descriptions[0]);
 	$desc_additional_musicians = &description2additional_musicians(\$descriptions[0]);
@@ -2328,6 +2396,8 @@ sub process_tempo_data2($$$$) {
 		die($desc_additional_musicians);
 	    }
 	    elsif ( defined($desc_musicians) ) {
+		print STDERR "AN: $artist_notes\n";
+		$artist_notes =~ s/\.$//;
 		if ( $desc_musicians =~ s/^Jäsenet:/$artist_notes:/ ) {
 		    $artist_notes = undef;
 		}
@@ -2587,11 +2657,15 @@ sub process_tempo_data2($$$$) {
     # MARC511
     if ( defined($desc_musicians) ) {
 	$desc_musicians =~ s/([^\.])$/$1./;
-	add_marc_field($marc_record_ref, '511', "0 \x1Fa$desc_musicians");
+	if ( $debug ) {
+	    print STDERR "artist_notes => 511: $desc_musicians\n";
+	}
+	if ( $field_511_content ) { die(); }
+	$field_511_content = "0 \x1Fa$desc_musicians";
     }
 
     
-    &process_performer_note($prefix, $tempo_data_ref, $marc_record_ref, \@descriptions, $desc_additional_musicians); # 511. Do this before process_tempo_authors(), as this does not remove anything from $tempo_data_ref!
+    &process_performer_note($prefix, $tempo_data_ref, $marc_record_ref, \@descriptions, $desc_additional_musicians, \$field_511_content); # 511. Do this before process_tempo_authors(), as this does not remove anything from $tempo_data_ref!
 
     # MARC21: 1X0, 7X0 (FONO: ... )
     &process_tempo_authors($prefix, $tempo_data_ref, $marc_record_ref, $is_classical_music, $is_host);
@@ -2664,7 +2738,12 @@ sub process_tempo_data2($$$$) {
     &process_theme($prefix, $tempo_data_ref, $marc_record_ref);
 
     # $prefix/descriptions
-    &process_descriptions($is_host, $prefix, $tempo_data_ref, $marc_record_ref, \@descriptions);
+
+    &process_descriptions($is_host, $prefix, $tempo_data_ref, $marc_record_ref, \@descriptions, \$field_511_content);
+
+    if ( $field_511_content ) {
+	add_marc_field($marc_record_ref, '511', $field_511_content);
+    }
     
     ## 518 (and 033):
     # Primary source: recording_location_details
