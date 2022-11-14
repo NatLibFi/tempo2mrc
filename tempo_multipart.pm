@@ -118,6 +118,7 @@ sub list_multipart_records_for_505($) {
 	}
     }
     if ( $#{$record_array_ref} != $#list ) {
+	# Some multipart parts are nameless
 	print STDERR "WARNING\tSize mismatch between N multiparts and N 505\$a elements.\n";
     }
     return @list;
@@ -146,23 +147,22 @@ sub copy_multipart_isrc($$) {
 
     # Gather:
     my @content = ();
+    my $nth = 1;
     foreach my $curr_record ( @{$marc_record_array_ref} ) {
 	my @f024 = $curr_record->get_all_matching_fields('024', undef);
-	my $f773 = $curr_record->get_first_matching_field('773');
-	my $g = undef;
-	if ( defined($f773) && $f773->{content} =~ /\x1Fg([^\x1F]+)/ ) {
-	    $g = $1;
-	    $g =~ s/^(.)/\l$1/;
-	}
 	# Should we copy other identifiers?
+	my $seen=0;
 	foreach my $isrc_field ( @f024 ) {
 	    #die($#f024);
 	    if ( $isrc_field->{content} =~ /^0/ ) {
+		if ( $seen ) { die(); }
 	 	my $new_content = $isrc_field->{content};
-		if ( defined($g) ) { $new_content .= "\x1Fq$g"; }
+		$new_content .= "\x1FqOsa $nth";
 		push @content, $new_content;
+		$seen++;
 	    }
 	}
+	$nth++;
     }
     # Sort:
     @content = sort(@content);
