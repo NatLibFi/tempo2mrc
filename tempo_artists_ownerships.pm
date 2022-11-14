@@ -680,7 +680,7 @@ sub get_name_variants($) {
     }
 
     my @result = sort keys %cands;
-    if ( $debug && $subfield_a =~ /(Hammerstein|Gustaf von|Hertzen)/ ) {
+    if ( $debug && $subfield_a =~ /(Hammerstein|Gustaf von|Hertzen|Leeuwen)/ ) {
 	print STDERR "Name variants for ", $field->{tag}, ": '", join("', '", @result), "'\n";
     }
 
@@ -725,22 +725,18 @@ sub process_fin11_auth_record($) {
 #NV#    }
 #NV#  }
 
-    my @tags = ( '100', '400' ); # no relevant 700 data
+    # Don't use 400 data, as the name might change
+    my @tags = ( '100' ); # , '400' ); # no relevant 700 data
     foreach my $curr_tag ( @tags ) {
 	my @X00 = $record->get_all_matching_fields($curr_tag);
 	for ( my $i=0; $i <= $#X00; $i++ ) {
 	    my $X00 = $X00[$i];
 	    my @names = get_name_variants($X00);
 	    foreach my $name ( @names ) {
-		if ( $curr_tag !~ /^4/ ) {
-		    &map_name2auth_record($name, $record);
-		    if ( $debug && $name =~ /(Hammerstein|Hertzen)/i ) {
-			my $f001 = $record->get_first_matching_field('001');
-			print STDERR "MAP '$name' TO (FIN11)", $f001->{content}, "\n";
-		    }
-		}
-		else {
-		    #NV#	&add_wrong_name2auth_record($X00a, $record);
+		&map_name2auth_record($name, $record);
+		if ( $debug && $name =~ /(Hammerstein|Hertzen|Leeuwen)/i ) {
+		    my $f001 = $record->get_first_matching_field('001');
+		    print STDERR "MAP '$name' TO (FIN11)", $f001->{content}, "\n";
 		}
 	    }
 	}
@@ -779,80 +775,39 @@ sub process_fin11_auth_record($) {
 	    }
 	}
     }
-
-    
-#NV#  # Onkohan näissä mitään järkeä...
-#NV#  if  ( $yhtye ) {
-#NV#    my @f410 = marc21_record_get_fields($record, '410', '');
-#NV#    for ( $i=0; $i <= $#f410; $i++ ) {
-#NV#      my $f410 = $f410[$i];
-#NV#      my $f410a = marc21_field_get_subfield($f410, 'a');
-#NV#      if ( $f410a ) {
-#NV#	$f410a =~ s/,$//;
-#NV#	&add_wrong_name2auth_record($f410a, $record);
-#NV#	$names10{$f410a} = 1;
-#NV#	if ( $f410a =~ s/ \(.*\)$// ) { # "foo (yhtye)" => "foo"
-#NV#	  &add_wrong_name2auth_record($f410a, $record);
-#NV#	  $names10{$f410a} = 1;
-#NV#	}
-#NV#      }
-#NV#      # TODO: näillekin pitäs tehdä jotain...
-#NV#      my $f410d = marc21_field_get_subfield($f410, 'd');
-#NV#      my $f410e = marc21_field_get_subfield($f410, 'e');
-#NV#    }
-#NV#  }
-#NV#
-#NV#  my $f700 = marc21_record_get_field($record, '700', '');
-#NV#
-#NV#  if ( defined($f700) && $f700 ) { # Paljon melua tyhjästä: näitä on tasan 1
-#NV#    #print STDERR " NV 700 $f700\n";
-#NV#    my $f700a = marc21_field_get_subfield($f700, 'a');
-#NV#
-#NV#    if ( defined($f700a) && $f700a ) {
-#NV#      $f700a =~ s/,$//;
-#NV#      if ( defined($human_names{$f700a}) ) {
-#NV#	print STDERR " NV debug 700: outo ihmisnimi: $f700a\n";
-#NV#      }
-#NV#
-#NV#      &map_name2auth_record($f700a, $record);
-#NV#      $names00{$f700a} = 1;
-#NV#    }
-#NV#    my $f700d = marc21_field_get_subfield($f700, 'd');
-#NV#    my $f700e = marc21_field_get_subfield($f700, 'e');
-#NV#  }
-#NV#
-#NV#  if ( $yhtye ) {
-#NV#    my $f710 = marc21_record_get_field($record, '710', '');
-#NV#    if ( defined($f710) && $f710 ) {
-#NV#      my $f710a = marc21_field_get_subfield($f710, 'a');
-#NV#      # Talleta molemmat versiot nimestä (pelkkä lyhyt versio saattaisi riittää):
-#NV#      &map_name2auth_record($f710a, $record);
-#NV#      $names10{$f710a} = 1;
-#NV#      if ( $f710a =~ s/ \(.*\)$// ) {
-#NV#	&map_name2auth_record($f710a, $record);
-#NV#	$names10{$f710a} = 1;
-#NV#      }
-#NV#
-#NV#      my $f710d = marc21_field_get_subfield($f710, 'd');
-#NV#      my $f710e = marc21_field_get_subfield($f710, 'e');
-#NV#    }
-#NV#  }
 }
 
-	
+
+sub function2ids($$) {
+    my ( $authors_ref, $function ) = @_;
+    my %authors = %{$authors_ref};
+    
+    my @all_auth_ids = sort keys %authors;
+
+    my @esittaja_auth_ids = ();
+    foreach my $auth_id ( @all_auth_ids ) {
+	if ( defined($authors{$auth_id}->{$function}) ) {
+	    $esittaja_auth_ids[$#esittaja_auth_ids+1] = $auth_id;
+	}
+    }
+    
+    return @esittaja_auth_ids;
+}	
+
 
 sub get_best_author($$$) {
     my ( $authors_ref, $is_classical_music, $is_host ) = @_;
     my %authors = %{$authors_ref};
     # Unlike
 
-    my @auth_ids = sort keys %authors;
+    my @auth_ids = sort keys %authors; # How about getting em in some priority order?
 
     # If there's only one author in the record, make it 1XX:
     if ( $#auth_ids == 0 ) {
 	return $auth_ids[0];
     }
 
+    # Debugging crap
     if ( 0 ) {
 	foreach my $auth_id ( @auth_ids ) {
 	    my $var = $authors{$auth_id};
@@ -864,41 +819,34 @@ sub get_best_author($$$) {
 	}
     }
 
-    
-    # Composer:
-    if ( $is_classical_music || !$is_host ) {
-	my $hits = 0;
-	my $composer = undef;
-	foreach my $auth_id ( @auth_ids ) {
-	    if ( defined($authors{$auth_id}->{'säveltäjä'}) ) {
-		if ( !$hits ) {
-		    $composer = $auth_id;
-		}
-		$hits++;
 
-	    }
+    # Comp: use first composer (or nothing):
+    if ( !$is_host ) {
+	my @composer_ids = function2ids($authors_ref, 'säveltäjä');
+	if ( $#composer_ids > -1 ) {
+	    return $composer_ids[0];
 	}
-	# Host: Don't give preference to any of the composers. They all go to 700...
-	# This is still iffy...
-	if ( !$is_host || $hits == 1 ) { return $composer; }
 	return undef;
     }
-
-    # Performer.
-    # Note that we no longer have distinction between main and other
-    # performers! (= Fono fields 190 and 191)
     
-    # Should this correspond with 245$c?
-    my $hits = 0;
-    my $musician = undef;
-    foreach my $auth_id ( @auth_ids ) {
-	if ( defined($authors{$auth_id}->{'esittäjä'}) ) {
-	    $hits++;
-	    $musician = $auth_id;
+    # Hosts
+    if ( $is_classical_music ) {
+	# TM: "Ohje on, että taidemusiikkiemossa 1XX:ään tulee ainoa pääesittäjä, jos julkaisun teoksilla ei ole yhtä yhteistä säveltäjää (tämä olisi kai ilmoitettu Tempo-emossakin)."	
+	my @composer_ids = function2ids($authors_ref, 'säveltäjä');
+	if ( $#composer_ids == 0 ) {
+	    return $composer_ids[0];
 	}
     }
-    # Don't give preference to any of the performers. This is iffy though.
-    if ( $hits == 1 ) { return $musician; }
+
+    # Use main performer. Note that we no longer have distinction between main
+    # and other performers! (= Fono fields 190 and 191).
+    # Tempo lumps them all together...
+    my @performer_ids = function2ids($authors_ref, 'esittäjä');
+
+    # If there's one performer use him/her/them:
+    if ( $#performer_ids == 0 ) {
+	return $performer_ids[0];
+    }
     return undef;
 }
 
@@ -1046,13 +994,23 @@ sub tempo_author2asteri_record($$) {
     if ( $#{$cand_records_ref} == 0 ) {
 	# Can we be sure, that the match is correct?
 	# If Tempo person has no birth nor death year,
-	# We don't dare to use this.
-	if ( ${$cand_records_ref}[0]->get_first_matching_field('100') ) {
+	# We don't dare to use this for adding $0.
+
+	my $f100 = ${$cand_records_ref}[0]->get_first_matching_field('100');
+	if ( $f100 ) {
+	    # However, we dare to use the Asteri 100 name...
+	    my $f100a = $f100->get_first_matching_subfield('a');
+	    $f100a =~ s/,$//;
+	    if ( $f100a ne ${$author_ref}{'name'} ) {
+		print STDERR "RENAME '", ${$author_ref}{'name'}, "' as '$f100a'\n";
+		${$author_ref}{'name'} = $f100a;
+	    }
+	    
 	    if ( !defined(${$author_ref}{'birth_year'}) &&
 		 !defined(${$author_ref}{'death_year'}) ) {
 		if ( $debug ) {
 		    print STDERR "NB\tDon't map ", ${$author_ref}{'name'}, " to Asteri, since we don't have a birth/death year in Tempo data.\n";
-		    print STDERR Dumper($author_ref), "\n";
+		    #print STDERR Dumper($author_ref), "\n";
 		}
 		return undef;
 	    }
@@ -1223,8 +1181,8 @@ sub tempo_author_to_marc_field($$$) {
 	$n_cands = $#cand_records+1;
     }
 
-    # Try to find an Asteri record.
     my $asteri_record = tempo_author2asteri_record($author_ref, \@cand_records);
+    $name = ${$author_ref}{'name'}; # tempp_author2asteri_record() might update this even if 
     #if ( $asteri_record ) { die(); }
     my $ten = get_tens($author_ref, $asteri_record, \@cand_records);
 
