@@ -55,9 +55,9 @@ sub tempo_lc($) {
     my ( $str ) = @_;
     #$str = lc($str); # FFS: broke encoding in 653 näyttämömusiikki...
     $str =~ tr/A-Z/a-z/;
-    $str =~ s/Å/å/;
-    $str =~ s/Ä/ä/;
-    $str =~ s/Ö/ö/;
+    $str =~ s/Å/å/g;
+    $str =~ s/Ä/ä/g;
+    $str =~ s/Ö/ö/g;
     return $str;
 }
 
