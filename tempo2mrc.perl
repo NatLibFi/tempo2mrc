@@ -2246,7 +2246,8 @@ sub pair_person_and_band($$) {
 	    my @affiliate_fields = $auth_record->get_all_matching_fields('373');
 	    foreach my $affiliate_field ( @affiliate_fields ) {
 		my $content = $affiliate_field->{content};
-		print STDERR "ppab4 in: $name vs '$content'\n"; # die();
+		print STDERR "ppab4 (affiliates) in: $name vs '", $affiliate_field->toString(), "'\n"; # die();
+
 		while ( $content =~ s/\x1Fa([^\x1F]+)// ) {
 		    my $affiliate_name = $1;
 		    $affiliate_name =~ s/,$//;
@@ -2596,7 +2597,7 @@ sub process_tempo_data2($$$$) {
 
 	print STDERR join("\n", @album_refs2ean);
 	foreach my $ean ( @album_refs2ean ) {
-	    add_marc_field($marc_record_ref, '024', "3 \x1Fa".$ean."\x1Fqtempo2mrc album ref");
+	    add_marc_field($marc_record_ref, '024', "3 \x1Fa".$ean."\x1Fqextracted from Tempo record's album_ref");
 	}
     }
 
