@@ -40,6 +40,20 @@ $X00e_score{'johtaja'} = 940;
 $X00e_score{'musiikkiohjelmoija'} = 10;
 our @X00e_scorelist = sort { $X00e_score{$b} <=> $X00e_score{$a} } keys %X00e_score;
 
+my $iso_kirjain =  "(?:[A-Z]|Á|Å|Ä|Ç|É|Md|Ø|Ó|Õ|Ö|Ø|Š|Ü|Ž)"; # Md. on mm. Bangladeshissä yleinen lyhenne M[ou]hammedille...
+#my $pikkukirjain =  Encode::encode('UTF-8', "[a-z]|a\-a|à|á|å|ä|æ|č|ç|ć|è|é|ë|ì|í|ï|ñ|ń|ò|ó|õ|ö|š|ù|ú|ü|ỳ|ý|ø|ß");
+my $pikkukirjain =  "(?:[a-z]|a\-a|à|á|â|å|ã|ä|æ|ă|ā|č|ç|ć|è|é|ê|ë|ě|ė|ȩ|ì|í|ï|î|ī|ł|ñ|ń|o-o|ò|ó|õ|ö|ô|š|ş|ð|ù|ú|ü|û|ū|ỳ|ý|ÿ|ž|ø|ß)";
+
+my $aatelisalku = "(?:af [A-Z]|Al [A-Z]|[Dd]a [A-Z]|[dD]'[A-Z]|[dD]all\'[A-Z]|[Dd]e [A-Z]|De[A-Z]|de la [A-Z]|del [A-Z]|dela [A-Z]|den [A-Z]|[Dd]i [A-Z]|du [A-Z]|Fitz[A-Z]|[Ll]e ?[A-Z]|Mc [A-Z]|Ma?c[A-Z]|O'[A-Z]|St[.] [A-Z]|ten [A-Z]|ter [A-Z]|[vV][ao]n [A-Z]|[Vv]an de [A-Z]|[vV]an den [A-Z]|[Vv][ao]n [dD]er [A-Z]|[Vv]an't [A-Z]|von dem [A-Z]|von und zu [A-Z])";
+
+
+my $sukunimen_alku = "(?:$aatelisalku|$iso_kirjain)";
+my $sukunimen_loppu = "(?:$pikkukirjain(?:\-$iso_kirjain$pikkukirjain|\-$aatelisalku$pikkukirjain)?)+";
+
+my $sukunimi_regexp = "$sukunimen_alku$sukunimen_loppu";
+my $etunimen_loppu = "(?:$pikkukirjain(?:\-$iso_kirjain$pikkukirjain)?)+";
+my $nimikirjain = "(?:$iso_kirjain|${iso_kirjain}[.]-$iso_kirjain|Ch|Sz|Th|Yu)";
+my $etunimi_regexp = "$iso_kirjain$etunimen_loppu";
 
 #our %wrong_name2auth_records; # source: FIN11 fields 400/410
 our %name2tarke; # Mamba => yhtye (vrt. "Mamba (yhtye)")
@@ -489,7 +503,7 @@ sub remove_non_authors($$) {
 	}
 
 	if ( defined($content) ) {
-	    add_marc_field($marc_recordP, '500', $content);
+	    main::add_marc_field($marc_recordP, '500', $content);
 	    delete ${$authorsP}{$key};
 	}
     }
@@ -1012,6 +1026,8 @@ sub tempo_author2asteri_record($$) {
 		    print STDERR "NB\tDon't map ", ${$author_ref}{'name'}, " to Asteri, since we don't have a birth/death year in Tempo data.\n";
 		    #print STDERR Dumper($author_ref), "\n";
 		}
+
+
 		return undef;
 	    }
 	}
@@ -1152,7 +1168,25 @@ sub is_pseudonym($) {
     return 0;
 }
 
+sub X00_ind1_and_subfield_a($) {
+    my ( $name ) = @_;
+    if ( $name =~ /,/ ) {
+	return "1 \x1Fa$name";
+    }
 
+    if ( $name =~ /^(DJ|MJ|VJ) / ) {
+	return "0 \x1Fa$name";
+    }
+    # Change IND1 and name from "Etunimi Sukunimi" => "Sukunimi, Etunimi".
+    if ( $name =~ s/^(\S+) (\S+)$/$2, $1/ ||
+	 $name =~ s/^($etunimi_regexp(?: af| de| de la| le| ten| van| van de[mnr]?| von| von und zu)) ($iso_kirjain$sukunimen_loppu)$/$2, $1/ ||
+	 $name =~ s/^($etunimi_regexp) ($iso_kirjain$sukunimi_regexp)$/$2, $1/ ) {
+	return "1 \x1Fa$name";
+    }
+
+    # Fall back
+    return "0 \x1Fa$name";;
+}
 
 sub tempo_author_to_marc_field($$$) {
     my ( $author_ref, $marc_record_ref, $hundred ) = @_;
@@ -1174,6 +1208,7 @@ sub tempo_author_to_marc_field($$$) {
 	@cand_records = grep { $_->get_first_matching_field('100') } @cand_records;
 	@cand_records = remove_birth_and_death_mismatches($author_ref, \@cand_records);
     }
+
     if ( $n_cands != $#cand_records+1 ) {
 	if ( $debug ) {
 	    print STDERR "  after filtering", ($#cand_records+1), " cand(s) found.\n";
@@ -1182,15 +1217,20 @@ sub tempo_author_to_marc_field($$$) {
     }
 
     my $asteri_record = tempo_author2asteri_record($author_ref, \@cand_records);
-    $name = ${$author_ref}{'name'}; # tempp_author2asteri_record() might update this even if 
+
     #if ( $asteri_record ) { die(); }
     my $ten = get_tens($author_ref, $asteri_record, \@cand_records);
 
     my $content = '';
 
+
+    
+    
     print STDERR "A2M $name BAND? X${ten}0, ASTERI: ", ($asteri_record ? 'Y':'N'), ", $n_cands\n";
     my $sf0 = undef;
     if ( defined($asteri_record) ) {
+
+
 	my $f1X0 = $asteri_record->get_first_matching_field('1.0');
 	if ( !defined($f1X0) ) { die(); }
 	# Do we dare to add $0 for bands based on just name? Risky...
@@ -1227,13 +1267,8 @@ sub tempo_author_to_marc_field($$$) {
 	    $content = "0 \x1Fa$name";
 	}
 	else {
-	    my $ind1 = ( $name =~ /,/ ? 1 : 0 );
-	    	
-	    # Change IND1 and name from "Etunimi Sukunimi" => "Sukunimi, Etunimi".
-	    if ( $ind1 eq '0' && $name =~ s/^(\S+) (\S+)$/$2, $1/ ) {
-		$ind1 = '1';
-	    }
-	    $content = "${ind1} \x1Fa$name";
+	    # Not using Asteri record:
+	    $content = X00_ind1_and_subfield_a($name);
 	    
 	    # TODO: check whether FIN11 auth record contains $c pseudonym
 	    # $c: pseudonyms from Tempo data and FIN11:
@@ -1270,7 +1305,7 @@ sub tempo_author_to_marc_field($$$) {
 	$content .= "\x1F0".$sf0;
     }
     
-    add_marc_field($marc_record_ref, $hundred.$ten.'0', $content);
+    main::add_marc_field($marc_record_ref, $hundred.$ten.'0', $content);
 }
 
 
