@@ -14,6 +14,7 @@ my $robust = 0;
 our $localhost = `hostname`;
 
 our %name2auth_records;   # koottu siistityistä (100|110|700|710)#a-kentistä
+our %alt_name2auth_records;   # Field 400
 
 my %X00_score; # order between different X00 fields.
 $X00_score{'säveltäjä'} = 100;
@@ -556,6 +557,33 @@ sub map_name2auth_record($$) {
     }
 }
 
+sub map_alt_name2auth_record($$) {
+    my ( $name, $auth_record ) = @_;
+
+    if ( !$fin11_read ) { read_minified_fin11(); }
+
+    my $i;
+    my @stack = ( $name );
+    
+    my $normalized_name = remove_diacritics($name);
+    if ( $normalized_name ne $name ) {
+	$stack[$#stack+1] = $normalized_name;
+    }
+
+    my $authstr = $auth_record->toString();
+    foreach my $n ( @stack ) {
+	my $skip = 0;
+	for ( $i = 0; $i <= $#{$alt_name2auth_records{$n}}; $i++ ) {
+	    if ( $authstr eq $alt_name2auth_records{$n}[$i]->toString() ) {
+		$skip = 1;
+	    }
+	}
+	if ( !$skip ) {
+	    push(@{$alt_name2auth_records{$name}}, $auth_record);
+	}
+    }
+}
+
 
 sub remove_diacritics($) {
   my ( $name ) = $_[0];
@@ -714,30 +742,6 @@ sub process_fin11_auth_record($) {
     my $f110 = $record->get_first_matching_field('110');
 
     if ( !defined($f100) && !defined($f110) ) { die(); }
-#NV#
-#NV#  # 100/110
-#NV#  # 400/410: kielletyt muodot
-#NV#  # 500/510: "katso myös"
-#NV#  # 700/710
-#NV#
-#NV#
-#NV#  my $yhtye = 1; # 
-#NV#  # Ylempänä katsotaan, että 040:sta löytyy FI-NLD, se riittäköön...
-#NV#  if ( 0 && defined($f110) ) {
-#NV#    my @f368 = marc21_record_get_fields($record, '368', undef);
-#NV#    for ( my $i=0; $i <= $#f368; $i++ ) {
-#NV#      if ( $f368[$i] =~ /\x1Fa([^\x1F]*(big band|duo|kuoro|kvartetti|kvintentti|orkesteri|sekstetti|trio|yhtye))($|\x1F)/ ) {
-#NV#	$yhtye = 1;
-#NV#      }
-#NV#      # not interested in these:
-#NV#      elsif ( $f368[$i] =~ /\x1F[ab][^\x1F]*(akatemia|alue|apteekki|arkisto|asema|autolautta|baari|divisioona|elin|elimet\)|festivaali|galleria|hallinto|hanke|harjoittaja|hautomo|hotelli|instituutti|istuin|jaosto|järjestö|kanava|kapituli|kassa|kauppa|kauppala|kaupunki|kerho|keskus|keskukset\)|ketju|kilta|kirjasto|kirkko|klubi|kokoelma|kokous|komitea|komppania|konserni|konsortio|koti|koulu|kunta|kurssi|kustantaja|kustantamo|laboratorio|laitos|laitokset\)|laiva|lehti|liike|liitto|luettelo|lukio|lyseo|lähetystö|merkki|ministeriö|museo|myymälä|neuvola|neuvosto|nimi|ohjelma|omainen|operaattori|opisto|opistot\)|organisaatio|osasto|osasto \(museot\)|osasto \(yhtiöt\)|paja|palvelu|pankki|parantola|pataljoona|piiri\)?|poliisi|prikaati|puisto|projekti|puolue|rahasto|rakennus|ravintola|rata|ryhmä|rykmentti|sairaala|\(sairaalat\)|seminaari|seura|sihteeristö|sivusto|studio|säätiö|tapahtuma|teatteri|tehdas|tila|toimiala|toimisto|toimitus|työ|verkosto|virasto|verkosto|väki|yhdistys|yhteisö|yhtiö|yhtymä|yksikkö|yritys)($|\x1F)/i ) {
-#NV#	# 
-#NV#      }
-#NV#      else {
-#NV#	print STDERR "368 TODO Contents: '$f368[$i]'\n";
-#NV#      }
-#NV#    }
-#NV#  }
 
     # Don't use 400 data, as the name might change
     my @tags = ( '100' ); # , '400' ); # no relevant 700 data
@@ -748,6 +752,21 @@ sub process_fin11_auth_record($) {
 	    my @names = get_name_variants($X00);
 	    foreach my $name ( @names ) {
 		&map_name2auth_record($name, $record);
+		if ( $debug && $name =~ /(Hammerstein|Hertzen|Leeuwen)/i ) {
+		    my $f001 = $record->get_first_matching_field('001');
+		    print STDERR "MAP '$name' TO (FIN11)", $f001->{content}, "\n";
+		}
+	    }
+	}
+    }
+
+    if ( 1 ) {
+	my @X00 = $record->get_all_matching_fields('400');
+	for ( my $i=0; $i <= $#X00; $i++ ) {
+	    my $X00 = $X00[$i];
+	    my @names = get_name_variants($X00);
+	    foreach my $name ( @names ) {
+		&map_alt_name2auth_record($name, $record);
 		if ( $debug && $name =~ /(Hammerstein|Hertzen|Leeuwen)/i ) {
 		    my $f001 = $record->get_first_matching_field('001');
 		    print STDERR "MAP '$name' TO (FIN11)", $f001->{content}, "\n";
@@ -943,6 +962,17 @@ sub name2auth_records($) {
     return ();
 }
 
+sub alt_name2auth_records($) {
+    my ( $name ) = @_;
+
+    if ( !$fin11_read ) { read_minified_fin11(); }
+
+    if ( defined($alt_name2auth_records{$name}) ) {
+	return @{$alt_name2auth_records{$name}};
+    }
+    return ();
+}
+
 
 sub tempo_is_definitely_human($) {
     my ( $author_ref ) = shift;
@@ -996,6 +1026,29 @@ sub remove_birth_and_death_mismatches($$) {
     return @cands;
 }
 
+sub asteri_record2content($) {
+    my ( $asteri_record ) = @_;
+    my $content = '';
+    my $sf0 = undef;
+    if ( defined($asteri_record) ) {
+	my $f1X0 = $asteri_record->get_first_matching_field('1.0');
+	if ( !defined($f1X0) ) { die(); }
+	# Do we dare to add $0 for bands based on just name? Risky...
+	if ( $f1X0->{tag} =~ /00$/ ) {
+	    if ( $f1X0->{content} =~ /^(..\x1Fa[^\x1F]+(?:\x1F[bcd][^\x1F]+)*)/ ) {
+		$content = $1;
+		$content =~ s/,$//;
+		if ( $f1X0->{content} =~ /\x1F0([^\x1F]+)/ ) {
+		    $sf0 = $1;
+		}
+	    }
+	    else {
+		die();
+	    }
+	}
+    }
+    return ( $content, $sf0 );
+}
 
 sub tempo_author2asteri_record($$) {
     my ( $author_ref, $cand_records_ref ) = @_;
@@ -1103,8 +1156,8 @@ sub educated_guess_is_person($) {
 	return 0;
     }
 
-    if ( $name =~ /('s |kuoro|kvintett|orkester)/i ||
-	 $name =~ /(^| )(and|band|duo|ensemble|ja|of|orchestra|project|the|trio)($| )/i ) {
+    if ( $name =~ /('s |ensemble|kuoro|kvintett|orkester|yhtye)/i ||
+	 $name =~ /(^| )(and|band|duo|ja|of|orchestra|project|the|trio)($| )/i ) {
 	return 0;
     }
     
@@ -1174,13 +1227,14 @@ sub X00_ind1_and_subfield_a($) {
 	return "1 \x1Fa$name";
     }
 
-    if ( $name =~ /^(DJ|MJ|VJ) / ) {
+    # "Jay Who?"
+    if ( $name =~ /^(DJ|MJ|VJ|Mr\.) / ||
+	 $name =~ /(\?|\!)$/ ) { 
 	return "0 \x1Fa$name";
     }
     # Change IND1 and name from "Etunimi Sukunimi" => "Sukunimi, Etunimi".
-    if ( $name =~ s/^(\S+) (\S+)$/$2, $1/ ||
-	 $name =~ s/^($etunimi_regexp(?: af| de| de la| le| ten| van| van de[mnr]?| von| von und zu)) ($iso_kirjain$sukunimen_loppu)$/$2, $1/ ||
-	 $name =~ s/^($etunimi_regexp) ($iso_kirjain$sukunimi_regexp)$/$2, $1/ ) {
+    if ( $name =~ s/^($etunimi_regexp(?: af| de| de la| le| ten| van| van de[mnr]?| von| von und zu)?) ($iso_kirjain$sukunimen_loppu)$/$2, $1/ ||
+	 $name =~ s/^((?:$etunimi_regexp|$nimikirjain\.)(?: $etunimi_regexp|$nimikirjain\.)*) ($sukunimi_regexp)$/$2, $1/ ) {
 	return "1 \x1Fa$name";
     }
 
@@ -1195,8 +1249,11 @@ sub tempo_author_to_marc_field($$$) {
     my $name = $author{'name'};
 
     my @cand_records = &name2auth_records($name);
+    my @alt_cand_records = &alt_name2auth_records($name);
     my $n_cands = $#cand_records+1;
-    if ( $debug ) { print STDERR "author ($name) => asteri: $n_cands cand(s) found.\n"; }
+    if ( $debug ) {
+	print STDERR "author ($name) => asteri: $n_cands cand(s) and ", ($#alt_cand_records+1), " alt cand(s) found.\n";
+    }
     #if ( $#cand_records > -1 ) { die(); } # test: found something
 
 
@@ -1207,6 +1264,9 @@ sub tempo_author_to_marc_field($$$) {
 	# TODO: remove non-humans from @records;
 	@cand_records = grep { $_->get_first_matching_field('100') } @cand_records;
 	@cand_records = remove_birth_and_death_mismatches($author_ref, \@cand_records);
+
+	@alt_cand_records = grep { $_->get_first_matching_field('100') } @alt_cand_records;
+	@alt_cand_records = remove_birth_and_death_mismatches($author_ref, \@alt_cand_records);
     }
 
     if ( $n_cands != $#cand_records+1 ) {
@@ -1216,37 +1276,17 @@ sub tempo_author_to_marc_field($$$) {
 	$n_cands = $#cand_records+1;
     }
 
+    
+    
     my $asteri_record = tempo_author2asteri_record($author_ref, \@cand_records);
 
-    #if ( $asteri_record ) { die(); }
-    my $ten = get_tens($author_ref, $asteri_record, \@cand_records);
 
-    my $content = '';
-
-
+    my $records4tens_ref = ( $#cand_records > -1 ? \@cand_records : \@alt_cand_records);
     
-    
+    my $ten = get_tens($author_ref, $asteri_record, $records4tens_ref);
+
     print STDERR "A2M $name BAND? X${ten}0, ASTERI: ", ($asteri_record ? 'Y':'N'), ", $n_cands\n";
-    my $sf0 = undef;
-    if ( defined($asteri_record) ) {
-
-
-	my $f1X0 = $asteri_record->get_first_matching_field('1.0');
-	if ( !defined($f1X0) ) { die(); }
-	# Do we dare to add $0 for bands based on just name? Risky...
-	if ( $f1X0->{tag} =~ /00$/ ) {
-	    if ( $f1X0->{content} =~ /^(..\x1Fa[^\x1F]+(?:\x1F[bcd][^\x1F]+)*)/ ) {
-		$content = $1;
-		$content =~ s/,$//;
-		if ( $f1X0->{content} =~ /\x1F0([^\x1F]+)/ ) {
-		    $sf0 = $1;
-		}
-	    }
-	    else {
-		die();
-	    }
-	}
-    }
+    my ( $content, $sf0 ) = &asteri_record2content($asteri_record); # IND1, IND2 & $abcd0
 
     if ( !$content ) {
 	if ( $ten ) { # is band
