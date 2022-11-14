@@ -90,11 +90,6 @@ sub recording_location_details2place_of_event($) {
     my ( $recording_location_details_ref ) = @_;
     my $location_part = recording_location_details2place_of_event2($recording_location_details_ref);
 
-    # Avoid place name repetition (proto, extend later):
-    if ( $location_part =~ /^(\S+): (\S+)n kirkko/ && $1 eq $2 ) {
-	$location_part =~ s/^\S+ //;
-    }
-
     $location_part =~ s/: /, /g;
     
     return $location_part;
