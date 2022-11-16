@@ -66,6 +66,28 @@ sub sort_multiparts_by_773g($) {
     return @array;
 }
 
+sub human_readable_seconds($) {
+    my ( $f306a ) = @_;
+    $f306a =~ s/^0+(\d)/$1/; # leaves last 0 if needed
+    print STDERR "306: $f306a\n";
+    my $min = int($f306a/60);
+    my $s = $f306a%60;
+
+    #if ( $min > 59 ) { die(); } # should we use hours?
+    
+    if ( $min || $s ) {
+	my $entry = ' (';
+	if ( $min ) {
+	    $entry .= $min . ' min';
+	    if ( $s ) { $entry .= ' '; }
+	}
+	$entry .= $s. ' s)';
+	return $entry;
+   }
+    return '';
+}
+
+
 sub list_multipart_records_for_505($) {
     my ( $record_array_ref ) = @_;
 
@@ -91,21 +113,7 @@ sub list_multipart_records_for_505($) {
 	}
 	
 	if ( defined($f306a) ) {
-	    $f306a =~ s/^0+(\d)/$1/; # leaves last 0 if needed
-	    print STDERR "306: $f306a\n";
-	    my $min = int($f306a/60);
-	    my $s = $f306a%60;
-	    if ( $min || $s ) {
-		$entry .= ' (';
-		if ( $min ) {
-		    $entry .= $min . ' min';
-		    if ( $s ) { $entry .= ' '.$s. 's'; }
-		}
-		else {
-		    $entry .= $s. 's';
-		}
-		$entry .= ')';
-	    }
+	    $entry .= &human_readable_seconds($f306a);
 	}
 
 	$entry = trim_ends($entry);
