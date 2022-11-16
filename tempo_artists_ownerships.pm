@@ -1134,15 +1134,16 @@ sub educated_guess_is_person($) {
 
     
     my $name = $author{'name'};
-    if ( $debug ) {
-	print STDERR "Educated X00/X10 guess is based on string '$name'\n";
-    }
+
 
     if ( $name =~ /[0-9]/ ) {
 	if ( defined($human_names{$name}) ) {
 	    # NB! No need to list the ones with an authority record
 	    die(); # untested after mods
 	    return 1;
+	}
+	if ( $debug ) {
+	    print STDERR "Educated X00/X10 guess for '$name': band (reason: digits)\n";
 	}
 	return 0;
     }
@@ -1157,12 +1158,15 @@ sub educated_guess_is_person($) {
     }
 
     if ( $name =~ /('s |ensemble|kuoro|kvintett|orkester|yhtye)/i ||
-	 $name =~ /(^| )(and|band|duo|ja|of|orchestra|project|the|trio)($| )/i ) {
+	 $name =~ /((^| )(and|band|duo|ja|of|orchestra|project|the|trio)($| ))/i ) {
+	if ( $debug ) {
+	    print STDERR "Educated X00/X10 guess for '$name': band (reason: '$1')\n";
+	}
 	return 0;
     }
     
     if ( $debug ) {
-	print STDERR "Educated X00/X10 guess fallback '$name' defaults to person\n";
+	print STDERR "Educated X00/X10 guess for name '$name' (reason: default)\n";
     }
     return 1;
 }
