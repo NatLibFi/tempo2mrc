@@ -302,7 +302,30 @@ sub get_base_record_ref($$) {
     }
     return undef;
 }
-    
+
+sub copy_host_info_to_multipart($) {
+    my ( $marc_record_array_ref ) = @_;
+    # Apparently a Tempo record that consist of one multipart
+    # fields X00 and 511 are stated only in the host records.
+    # (Does this apply to non-multiparts as well?)
+    # They must be copied from host.
+    if ( $#{$marc_record_array_ref} == 1 ) {
+	my $host_ref = \${$marc_record_array_ref}[0];
+	my $comp_ref = \${$marc_record_array_ref}[1];
+
+	foreach my $field_group ( '[17][01]0', '511' ) {
+	    my @comp_entry_fields = ${$comp_ref}->get_all_matching_fields($field_group);
+	    if ( $#comp_entry_fields == -1 ) { # <- COMP has none
+		my @host_entry_fields = ${$host_ref}->get_all_matching_fields($field_group);
+		foreach my $field ( @host_entry_fields ) {
+		    main::add_marc_field($comp_ref, $field->{tag}, $field->{content});
+		}
+	    }
+	}
+    }
+}
+
+
 sub handle_multiparts($) {
     my ( $marc_record_array_ref ) = @_;
 
@@ -337,6 +360,10 @@ sub handle_multiparts($) {
 	# Remove multiparts
 	@{$marc_record_array_ref} = grep { get_multipart_id(\$_) ne $multipart_id } @{$marc_record_array_ref };
     }
+
+    # NB! This is not checking that comp is really a multipart.
+    # Not sure whether it even should.
+    copy_host_info_to_multipart($marc_record_array_ref);
 }
 
 
