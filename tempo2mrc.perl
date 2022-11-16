@@ -1672,15 +1672,14 @@ sub process_descriptions2language_notes($$$) {
 	$descriptions_ref->[$i] =~ s/sittelylehtien /sittelylehtinen /;
 
 	my $add_300e = 0;
-	while ( $descriptions_ref->[$i] =~ s/(^| )($esittelylehtinen(?: (?:[a-z]|ä)+ksi,)*(?: (?:[a-z]|ä)+ksi ja)? (?:[a-z]|ä)+ksi\.)($| )/ / ) {
+	while ( $descriptions_ref->[$i] =~ s/(?:^| )($esittelylehtinen(?: (?:[a-z]|ä)+ksi,)*(?: (?:[a-z]|ä)+ksi ja)? (?:[a-z]|ä)+ksi\.)($| )/ / ) {
+	    my $text = $1;
+	    
 	    $descriptions_ref->[$i] = trim_all($descriptions_ref->[$i]);
 	    $n_hits++;
-	    #if ( $n_hits > 1 ) { die(); }
-	    
-	    my $text = $1;
+
 	    my $content = "  \x1Fa".$text;
 	    add_marc_field($marc_recordP, '546', $content);
-
 	    # What's the difference between 'esittelylehtinen' and
 	    # 'tekstilehtinen'
 	    if ( $text =~ /(esittelylehtinen|libretto|tekstilehtinen)/i ) {
@@ -1818,7 +1817,7 @@ sub process_language_codes($$) { # add 041
 	my $l0 = iso639_3_to_marc_language_code($languages[0]) || $languages[0];
 	my $l1 = iso639_3_to_marc_language_code($languages[1]) || $languages[1];
 	if ( $l0 eq $l1 ) { # Exception!
-	    # Special case: sjd => smi && smn => smi: add smi to stack
+	    # Special case: sjd => smi && smn => smi: add only one smi to stack
 	    # (and print separately later on):
 	    if ( $l0 ne $languages[0] && $l1 ne $languages[1] ) {
 		push @languages, $l0;
