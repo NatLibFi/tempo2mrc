@@ -2731,15 +2731,12 @@ sub process_tempo_data2($$$$) {
     &add_935($marc_record_ref, $is_host);
 
     # Check whether the record is a multipart.
-    # Store the information to ad hoc field 799$w
+    # HACK: Store the information to multipart-comp's ad hoc field 799$w
     my $multipart = get_single_entry("/$prefix/multipart", $tempo_data_ref);
     if ( defined($multipart) ) {
 	add_marc_field($marc_record_ref, '799', "  \x1Fw$multipart")
     }
     
-    # Final fixes:
-    ${$marc_record_ref}->fix_245_ind1();
-    ${$marc_record_ref}->fix_nonfiling_character_fields(); # 245 IND2 etc
     
 
     postprocess_asteri_links($marc_record_ref);
@@ -2939,8 +2936,11 @@ for ( my $i=0; $i <= $#input_files; $i++ ) {
     my $target_directory = &output_dir_or_error_dir2target_dir(\@marc_objects, $filename, $output_directory, $error_directory);
 
     create_host_field_505(\@marc_objects);
-    # Sort after last field add:
+
+    # Final fixes: set certain indicators and sort fields:
     foreach my $record ( @marc_objects ) {
+	$record->fix_245_ind1();
+	$record->fix_nonfiling_character_fields(); # 245 IND2 etc
 	$record->sort_fields();
     }
     
