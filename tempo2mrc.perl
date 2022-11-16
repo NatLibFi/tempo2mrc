@@ -6,62 +6,7 @@
 #
 # Author(s): Nicholas Volk <nicholas.volk@helsinki.fi>
 #
-# How should we react to "/data/public = 'false'"?
-# Viola data: /data/custom/finnish_content = 'yes'???
-#
-# 300$a:han tuleva tieto löytynee Tempon titlestä.
-# Lisäksi huonosti nimetty /album/tracks[0]/custom/disc_number voi kyllä antaa
-# jotain osviittaa, mutta siinä pitäisi käydä kaikki poikaset läpi, ja muokata
-# lopuksi emoa...
-# 
-# - Improve 33X support
-# - Improve 773 subfield support?
-#
-# NB! Fono field 223 (and 225) => copied 008/15-17 from host to comp, but we
-# seem to have it currently on comps as well... TODO: add sanity check.
-#
-#
-# KYSSÄREITÄ JA KOMMENTTEJA YLELLE:
-# K: Jos EAN-koodi on 12-merkkinen, niin onko se oikeasti UPC-koodi?
-#    Vai puuttuuko siitä alku-0 tms.?
-#    Vastaan tullut tapaus oli virhe muuallakin:
-#    https://fuga.fi/?sivu=detail&id=761195134023
-#    Ja ton mukaan toi on nimen omaan UPC-koodi:
-#    https://www.hbdirect.com/album_detail.php?pid=4111458
-# -  Entäs jos EAN on 14-merkkinen, kuten Mikko / Pyhimys?
-#    Ylimääräinen alkunolla?
-#
-# V: Viivakoodeista: meillä ei aikaisemmin ole ollut kuin yksi kenttä kaikentyyppisille viivakoodeille, ja se on Tempossa mäpätty Fonosta tuohon EAN-kenttään. Paras ratkaisu olisi kai ollut käyttää GTINiä ja lisätä etunollat kaikille, mutta koska tätä ei ollut Tempon tuotteessa saatavilla, kaikki Ylen viivakoodit ovat jatkossa tuossa EAN-kentässä (myös ne vanhan aikakauden viivakoodit jotka eivät ole UPC:tä eivätkä EAN:ää).
-#
-# K: Fonon 191-kentät "Jäsenet lueteltu kansilehdessä" ja vastaavat:
-#   Onko tämä enää missään?
-#
-# V: JS: "Jäsenet lueteltu" -tyyliset huomautukset on migraatiossa laitettu Descriptions-kenttään ja jos tehdään taaksepäin yhteensopivaa kuvailua, ne löytyvät sieltä jatkossa 
-#
-# K: */descriptions: "Esittelylehtinen englanniksi" on emon ominaisuus.
-#    Listattu kuitenkin myös poikaselle. Bugi vai ominaisuus?
-#    (Meidän tietueissa tuo olisi kai bugi.)
-#
-# V: JS:  "Esittelylehtinen jne" ovat tarkoituksella olleet myös yksittäisten teosten tiedoissa ainakin vanhassa aineistossa
-#
-## KYSSÄREITÄ 2:
-# - Ylen lista ja meidän vanhat konversiot 104-kentästä eivät ihan mätsää...
-# - CustomID vs Audiofile, Tempon kaikissa 007/00=s, meillä audiofileessä oli 007/00=c
-# - KK:lla on laitettu cd:ille 007/03:een 'f', tempossa '|', vaikka muuten tempon 007 on hyvin tarkka (KK:lla koodattu 007:lle merkkipaikat 00,01,03,06 ja 10.
-# vrt. https://www.kiwi.fi/pages/viewpage.action?pageId=75216037
-#
-# DIGI-kokoelma: ei voi tietää, onko lähde elektroninen aineisto vai CD tms.
-# Olettaisin elektronisiksi?
-# Sinkuilla on nimetön emo:
-#
-# samples/6270d81f333da90039f191c4.json
-#
-# samples/626fb7e41e01e100336f369a.json
-#
-# TODO: 'aliases' might contains something remotely useful. (Aliases and pseudonums)
 
-# TODO: check why we get duplicate fields. Remove duplicate fields.
-# TODO: ask about tekstilehtinen and esittelylehtinen...
 use strict;
 use warnings;
 use JSON;
@@ -127,22 +72,18 @@ my $iso_kirjain =  "(?:[A-Z]|Á|Å|Ä|Ç|É|Md|Ø|Ó|Õ|Ö|Ø|Š|Ü|Ž)"; # Md. 
 #my $pikkukirjain =  Encode::encode('UTF-8', "[a-z]|a\-a|à|á|å|ä|æ|č|ç|ć|è|é|ë|ì|í|ï|ñ|ń|ò|ó|õ|ö|š|ù|ú|ü|ỳ|ý|ø|ß");
 my $pikkukirjain =  "(?:[a-z]|a\-a|à|á|â|å|ã|ä|æ|ă|ā|č|ç|ć|è|é|ê|ë|ě|ė|ȩ|ì|í|ï|î|ī|ł|ñ|ń|o-o|ò|ó|õ|ö|ô|š|ş|ð|ù|ú|ü|û|ū|ỳ|ý|ÿ|ž|ø|ß)";
 
-my $aatelisalku = "(?:af [A-Z]|Al [A-Z]|[Dd]a [A-Z]|[dD]'[A-Z]|[dD]all\'[A-Z]|[Dd]e [A-Z]|De[A-Z]|de la [A-Z]|del [A-Z]|dela [A-Z]|den [A-Z]|[Dd]i [A-Z]|du [A-Z]|Fitz[A-Z]|[Ll]e ?[A-Z]|Mc [A-Z]|Ma?c[A-Z]|O'[A-Z]|St[.] [A-Z]|ten [A-Z]|ter [A-Z]|[vV][ao]n [A-Z]|[Vv]an de [A-Z]|[vV]an den [A-Z]|[Vv][ao]n [dD]er [A-Z]|[Vv]an't [A-Z]|von dem [A-Z]|von und zu [A-Z])";
 
-my $sukunimen_alku = "(?:$aatelisalku|$iso_kirjain)";
-my $sukunimen_loppu = "(?:$pikkukirjain(?:\-$iso_kirjain$pikkukirjain|\-$aatelisalku$pikkukirjain)?)+";
 
-my $sukunimi_regexp = "$sukunimen_alku$sukunimen_loppu";
-my $etunimen_loppu = "(?:$pikkukirjain(?:\-$iso_kirjain$pikkukirjain)?)+";
-my $nimikirjain = "(?:$iso_kirjain|${iso_kirjain}[.]-$iso_kirjain|Ch|Sz|Th|Yu)";
-my $etunimi_regexp = "$iso_kirjain$etunimen_loppu";
 
-my $paikka_regexp = "$iso_kirjain(?:$pikkukirjain)+";
+#my $paikka_regexp = "$iso_kirjain(?:$pikkukirjain)+";
 
 
 
 sub usage() {
-    print STDERR "Usage:\n $0 input.json\n $0 --input-directory=/what/ever\n ./bin/tempo2mrc.perl --input-directory=TODO --output-directory=processed --error-directory=rejected\n";
+    print STDERR "Usage:\n",
+	" $0 input.json\n",
+	" $0 --input-directory=/what/ever\n",
+	" $0 --input-directory=TODO --output-directory=processed --error-directory=rejected\n";
 }
 
 sub pp_json($) {
@@ -3062,3 +3003,19 @@ if ( $#ARGV == -1 && $#input_files == -1 ) {
 # Fyysinen media   FONO-230 ???                 RODO300, 344
 # Rec.comp/prodcode   FONO-240 
 #                  FONO-303 ???                 024 (ind1=1 or 3)
+
+# KYSSÄREITÄ:
+#
+# K: Jos EAN-koodi on 12-merkkinen, niin onko se oikeasti UPC-koodi?
+#    Vai puuttuuko siitä alku-0 tms.?
+#    Vastaan tullut tapaus oli virhe muuallakin:
+#    https://fuga.fi/?sivu=detail&id=761195134023
+#    Ja ton mukaan toi on nimen omaan UPC-koodi:
+#    https://www.hbdirect.com/album_detail.php?pid=4111458
+# -  Entäs jos EAN on 14-merkkinen, kuten Mikko / Pyhimys?
+#    Ylimääräinen alkunolla?
+#
+# V: Viivakoodeista: meillä ei aikaisemmin ole ollut kuin yksi kenttä kaikentyyppisille viivakoodeille, ja se on Tempossa mäpätty Fonosta tuohon EAN-kenttään. Paras ratkaisu olisi kai ollut käyttää GTINiä ja lisätä etunollat kaikille, mutta koska tätä ei ollut Tempon tuotteessa saatavilla, kaikki Ylen viivakoodit ovat jatkossa tuossa EAN-kentässä (myös ne vanhan aikakauden viivakoodit jotka eivät ole UPC:tä eivätkä EAN:ää).
+#
+# TODO: 'aliases' might contains something remotely useful. (Aliases and pseudonums)
+
