@@ -325,37 +325,45 @@ sub field_requires_replication {
 
 ## fix_punctuation() is currently just a collection of hacks.
 # Try to generalize at some point...
+sub fix_punctuation_773($) {
+    my ( $self ) = @_;
+
+    my @subfield_stack = split(/\x1F/, $self->{content});
+
+    for ( my $i=1; $i < $#subfield_stack; $i++ ) {
+	if ( $subfield_stack[$i] =~   /^[stbdhmkzxog]/ &&
+	     $subfield_stack[$i+1] =~ /^[stbdhmkzxogq]/ ) {
+	    if ( $subfield_stack[$i] !~ /\. -$/ ) {
+		$subfield_stack[$i] .= ". -";
+		$subfield_stack[$i] =~ s/\.\. -$/. -/;
+	    }
+	}
+    }
+
+    # Clean up the last (if broken by sorting):
+    if ( $subfield_stack[$#subfield_stack] !~ / (ill|[A-Z])\.$/ ) {
+	$subfield_stack[$#subfield_stack] =~ s/\. -$/./;
+    }
+
+    # Loppupisteohje: '.' only after $a. However, don't do it for abbrs:	
+    if ( $subfield_stack[$#subfield_stack] !~ / s.$/ ) {
+	$subfield_stack[$#subfield_stack] =~ s/^([^a][^\x1F]*([a-z]|å|ä|ö))\.$/$1/;
+    }
+	
+    my $content = join("\x1F", @subfield_stack);
+    $self->{content} = $content;
+}
+
+
 sub fix_punctuation {
     my ( $self ) = @_;
     # Skip, if not a datafield:
     if ( index($self->{content}, "\x1F") == -1 ) { return; }
 
-    my @subfield_stack = split(/\x1F/, $self->{content});
     # TODO: figure out defaults
     #print STDERR "TODO: implement field->punctuate_subfields()...\n";
     if ( $self->{tag} eq '773' || $self->{tag} eq '973' ) {
-	for ( my $i=1; $i < $#subfield_stack; $i++ ) {
-	    if ( $subfield_stack[$i] =~ /^[tdhmkzxog]/ &&
-		 $subfield_stack[$i+1] =~ /^[tdhmkzxogq]/ ) {
-		if ( $subfield_stack[$i] !~ /\. -$/ ) {
-		    $subfield_stack[$i] =~ s/([a-z0-9\]]|ä)$/$1. -/;
-		    $subfield_stack[$i] =~ s/\.$/. -/;
-		}
-	    }
-	}
-	# Clean up the last (if broken by sorting):
-	if ( $subfield_stack[$#subfield_stack] !~ / (ill|[A-Z])\.$/ ) {
-	    $subfield_stack[$#subfield_stack] =~ s/\. -$/./;
-	}
-
-	# Loppupisteohje: '.' only after $a. However, don't do it for abbrs:	
-	if ( $subfield_stack[$#subfield_stack] !~ / s.$/ ) {
-	    $subfield_stack[$#subfield_stack] =~ s/^([^a][^\x1F]*([a-z]|å|ä|ö))\.$/$1/;
-	}
-	
-	my $content = join("\x1F", @subfield_stack);
-	$self->{content} = $content;
-	# if ( $content =~ /\.$/ ) { die("FFS: $content\n".$subfield_stack[$#subfield_stack]); }
+	$self->fix_punctuation_773();
     }
     
 }
@@ -1929,6 +1937,77 @@ sub get_place_of_publication() {
     return undef;
 }
 
+sub get_publication_year_008($) {
+    my ( $self ) = @_;
+    my $f008 = $self->get_first_matching_field('008');
+    if ( defined($f008) ) {
+	# 008/06 sanity checks:
+	if ( $f008 !~ /^......[cdeikmnpqrstu]/ ) { return 'uuuu'; }
+	return substr($f008, 7, 4);
+  }
+  return 'uuuu';
+}
+
+sub get_publication_year_260($) {
+    my ( $self ) = @_;
+    my $year_field = $self->get_first_matching_field('260');
+    if ( defined($year_field) && $year_field->{content} =~ /\x1Fc([^\x1F]+)/ ) {
+	my $f260c = $1;
+	if ( $f260c =~ /^\D*([0-9]{4})\D*$/ ) {
+	    my $year = $1;
+	    die($year_field->toString().": $year");
+	    return $year;
+	}
+    }
+    return 'uuuu';
+}
+
+sub get_publication_year_264($) {
+    my ( $self ) = @_;
+    my @ind2_try_order = ('1', '4');
+    my @year_fields = $self->get_all_matching_fields('264');
+    foreach my $ind2 ( @ind2_try_order ) {
+	foreach my $f264 ( @year_fields ) {
+	    if ( $f264->{content} =~ /^.${ind2}/ && $f264->{content} =~ /\x1Fc([^\x1F]+)/ ) {
+		my $cand = $1;
+		if ( defined($cand) && $cand =~ /^\D*([0-9]{4})\D*$/ ) {
+		    my $year = $1;
+		    return $year;
+		}
+	    }
+	}
+    }
+    return 'uuuu';
+}
+
+sub get_publication_year($) {
+    my ( $self ) = @_;
+
+    # 1st try: 008/07-10
+    my $year008 = $self->get_publication_year_008();
+    if ( $year008 =~ /^[0-9]{4}$/ ) {
+	return $year008;
+    }
+    
+    # 2nd try 260 (264 is better but slower check)
+    my $year = $self->get_publication_year_260();
+    if ( $year =~ /^[0-9]{4}$/ ) {
+	return $year;
+    }
+    
+    # 3rd try: 264 fields
+    $year = $self->get_publication_year_264();
+    if ( $year =~ /^[0-9]{4}$/ ) {
+	return $year;
+    }
+
+    # Fallback to 008/07-10
+    return $year008;
+}
+ 
+
+    
+   
 sub create_035_from_001_003($) {
     my ( $self ) = @_;
     if ( !$self->is_bib() ) {
@@ -1941,7 +2020,7 @@ sub create_035_from_001_003($) {
     
     my $f003 = $self->get_first_matching_field('003');
 
-    # Define $prefix: 
+    # Define $prefix:
     my $prefix = '';
     if ( !defined($f003) ) {
 	$prefix = '(FI-MELINDA)';
