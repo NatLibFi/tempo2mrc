@@ -136,11 +136,22 @@ sub reject_batch($) {
 	return 1;
     }
 
-    foreach my $record ( @{$marc_records_ref} ) {
-	if ( $record->is_deleted() ) { return 1; }
+    # KK is interested only in relatively new publications:
+    my $publication_year = ${$marc_records_ref}[0]->get_publication_year();
+    if ( $publication_year =~ /^[1-9][0-9]*$/ && $publication_year < 2000 ) {
+	print STDERR "BATCH REJECTED! REASON: PUBLICATION_YEAR $publication_year\n";
+	return 1;
+    }
 
+    foreach my $record ( @{$marc_records_ref} ) {
+	if ( $record->is_deleted() ) {
+	    print STDERR "BATCH REJECTED! REASON: CDY/DIGY (MARC AS DELETED)\n";
+	    return 1;
+	}
+
+	# Sanity checks. (We might drop the nameless host,
+	# but keep the rest eventually?)
 	my @required_tags = ( '007', '245' );
-	# Host should have a 300 at least
 	foreach my $tag ( @required_tags ) {
 	    my $field = $record->get_first_matching_field($tag);
 	    if ( !defined($field) ) {
