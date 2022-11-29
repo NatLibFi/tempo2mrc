@@ -143,6 +143,12 @@ sub reject_batch($) {
 	return 1;
     }
 
+    my $album_title = ${$marc_records_ref}[0]->get_first_matching_field('245');
+    if ( !defined($album_title) ) {
+	print STDERR "BATCH REJECTED! REASON: MISSING ALBUM TITLE (Set of $n record(s))\n";
+	return 1;
+    }
+    
     foreach my $record ( @{$marc_records_ref} ) {
 	if ( $record->is_deleted() ) {
 	    print STDERR "BATCH REJECTED! REASON: CDY/DIGY (MARC AS DELETED)\n";
@@ -2925,7 +2931,7 @@ sub create_host_field_505($) {
 	my $f245 = ${$records_ref}[$i]->get_first_matching_field('245');
 	if ( defined($f245) && $f245->{content} =~ /\x1Fa([^\x1F]+)/ ) {
 	    my $song_name = $1;
-	    $song_name =~ s/\.?( +[=\-\/])?$//;
+	    $song_name =~ s/\.?( +[=\-\/:])?$//;
 	    $songs[$#songs+1] = $song_name;
 	}
     }
