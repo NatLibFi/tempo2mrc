@@ -145,7 +145,11 @@ sub reject_batch($) {
 
     my $album_title = ${$marc_records_ref}[0]->get_first_matching_field('245');
     if ( !defined($album_title) ) {
-	print STDERR "BATCH REJECTED! REASON: MISSING ALBUM TITLE (Set of $n record(s))\n";
+	my $f338 = ${$marc_records_ref}[0]->get_first_matching_field('338');
+	my $content = $f338->{content};
+	$content =~ s/.*?\x1Fa//;
+	$content =~ s/\x1F.*$//;
+	print STDERR "BATCH REJECTED! REASON: MISSING ALBUM TITLE (Set of $n record(s))\t", $content, "\n";
 	return 1;
     }
     
@@ -167,6 +171,7 @@ sub reject_batch($) {
 	}
     }
 
+    print STDERR "BATCH ACCEPTED\n";
     # TODO: REJECT BATCH IF YEAR IS PRE-2020
     return 0;
 }
@@ -2196,7 +2201,7 @@ sub pair_person_and_band($$) {
     if ( ${$person_field_ref}->{content} =~ /\x1Fa([^\x1F]+)/ ) {
 	my $name = $1;
 	$name =~ s/,$//;
-	my @auth_records = &name2auth_records($name);
+	my @auth_records = name2auth_records($name);
 	print STDERR "ppab2 in: '$name' vs ", ($#auth_records+1), " auth records\n"; # die();
 
 	foreach my $auth_record ( @auth_records ) {
@@ -2212,7 +2217,7 @@ sub pair_person_and_band($$) {
 		    my $band_field = &get_affiliate_band_field($affiliate_name, $band_fields_ref);
 		    if ( defined($band_field) ) {
 			if ( $band_field->{content} !~ /\x1F0/ ) {
-			    my @band_auth_records = &name2auth_records($affiliate_name);
+			    my @band_auth_records = name2auth_records($affiliate_name);
 			    my $hits = 0;
 			    foreach my $bar ( @band_auth_records ) {
 				if ( !$hits && index($bar->toString(), $name) > -1 ) {
@@ -2563,7 +2568,7 @@ sub process_tempo_data2($$$$) {
     if ( $is_host ) {
 	$label = &get_label($prefix, $tempo_data_ref);
 
-	print STDERR "028028 '", join("', '", @tempo_album_refs), "'\n";
+	#print STDERR "028028 '", join("', '", @tempo_album_refs), "'\n";
 
 	my $tempo_album_ref = tempo_album_refs2tempo_album_ref(\@tempo_album_refs);
 
