@@ -25,6 +25,16 @@ sub map_name2auth_record($$) {
 	$stack[$#stack+1] = $normalized_name;
     }
 
+    if ( 1 ) { # This is not for Tempo, but for Melinda CAPITAL fixes
+	$normalized_name = uc($name);
+        $normalized_name =~ s/å/Å/g;
+	$normalized_name =~ s/ä/Ä/g;
+	$normalized_name =~ s/ö/Ö/g;
+	if ( $normalized_name ne $name ) {
+	    $stack[$#stack+1] = $normalized_name;
+	}
+    }
+    
     my $authstr = $auth_record->toString();
     foreach my $n ( @stack ) {
 	my $skip = 0;
