@@ -25,7 +25,7 @@ sub map_name2auth_record($$) {
 	$stack[$#stack+1] = $normalized_name;
     }
 
-    if ( 1 ) { # This is not for Tempo, but for Melinda CAPITAL fixes
+    if ( 0 ) { # This is not for Tempo, but for Melinda CAPITAL fixes
 	$normalized_name = uc($name);
         $normalized_name =~ s/å/Å/g;
 	$normalized_name =~ s/ä/Ä/g;
@@ -117,7 +117,6 @@ sub read_minified_fin11() {
     # NB! Melinda runs a script "minify_fin11_for_tempo.perl" via crontab
     # which can create minified version of FIN11 for our purposes
 
-    # [melinda@tietuehistoria-kk 0:130] 0.85 ~
     # $ ~/bin/minify_fin11_for_tempo.perl /dev/shm/index/asteri/fin11.seq > /dev/shm/index/asteri/fin11_for_fono.seq
 
     my $FH;
@@ -126,8 +125,7 @@ sub read_minified_fin11() {
 	# $file = "./fin11test.seq";
     }
     if ( ! -e $file ) {
-	print STDERR "$file: $!\nCREATE IT FIRST!\n";
-	print STDERR "[melinda\@tietuehistoria-kk 0:130] 0.85 ~\n";
+	print STDERR "$file: $!\nAS MELINDA CREATE IT FIRST!\n";
 	print STDERR "\$ ~/bin/minify_fin11_for_tempo.perl /dev/shm/index/asteri/fin11.seq > /dev/shm/index/asteri/fin11_for_fono.seq\n";
 	exit();
     }
@@ -251,5 +249,93 @@ sub name2tarke($) {
     }
     return $name2tarke{$name};
 }
+
+sub get_name_variants($) {
+    # NB! Hammerstein, Oscar, II track_60455260b7cc3b0168460681.json 
+    # 1001  L $$aHammerstein, Oscar,$$bII,$$d1895-1960$$0(FIN11)000195616
+    my ( $field ) = @_;
+    my $subfield_a = $field->get_first_matching_subfield('a');
+
+    if ( !defined($subfield_a) ) {
+	# 2022-06-16 this got triggered.
+	return (); # Try to be robust...
+	die($field->{content});
+    }
+    $subfield_a =~ s/,$//; # What about '.'?
+
+    if ( $debug && $subfield_a =~ /Hammerstein/ ) {
+	print STDERR "GNV: ", $field->toString(), " => ‡a:", $subfield_a, "\n";
+    }
+    
+    my $subfield_b = $field->get_first_matching_subfield('b');
+    if ( defined($subfield_b) ) {
+	$subfield_b =~ s/,$//; # What about '.'?
+	if ( $debug && $subfield_a =~ /Hammerstein/ ) {
+	    print STDERR "GNV: ‡b:", $subfield_b, " in  ", $field->toString(), "\n";
+	}
+    }
+
+    # Add $a as such:
+    my %cands;
+    $cands{$subfield_a} = 1;
+
+    # Yle stores names in "Forename Surname" format.
+    
+
+    if ( $field->{tag} =~ /00$/ ) {
+	# "Surname, Forname":
+	if ( $field->{content} =~ /^1/ ) {
+	    # Assumes single ','
+	    if ( $subfield_a =~ /^([^,]+), ([^,]+)$/ ) {
+		my $tmp = "$2 $1";
+		$cands{$tmp} = 1;
+		
+		# With $b: Hammerstein, Oscar, II
+		if ( defined($subfield_b) ) {
+		    $tmp = $subfield_a . ", " . $subfield_b;
+		    $cands{$tmp} = $tmp;
+		}
+	    }
+	}
+	# "Forname Surname"
+	elsif ( $field->{content} =~ /^0/ ) {
+	    # TODO: handle $b 
+	    if ( defined($subfield_b) ) {
+		# $a Johannes Paavali $b II
+		my $tmp = $subfield_a . " " . $subfield_b;
+		$cands{$tmp} = $tmp;
+	    }		
+	}
+    }
+
+    # TODO: Handle case normalizations: van vs Van..
+
+    foreach my $curr_cand ( sort keys %cands ) {
+	my $tmp = $curr_cand;
+	if ( $tmp =~ s/\b(af|van|von)\b/\u$1/ ) {
+	    $cands{$tmp} = $curr_cand;
+	}
+	elsif ( $tmp =~ s/\b(Af|Van|Von)\b/\l$1/ ) {
+	    $cands{$tmp} = $curr_cand;
+	}
+	
+    }
+    # TODO: Handle normalizations II: diacritics
+    foreach my $curr_cand ( sort keys %cands ) {
+	my $tmp = &remove_diacritics($curr_cand);
+	if ( $tmp ne $curr_cand ) {
+	    $cands{$tmp} = $curr_cand;
+	}
+    }
+
+    my @result = sort keys %cands;
+    if ( $debug && $subfield_a =~ /(Hammerstein|Gustaf von|Hertzen|Leeuwen)/ ) {
+	print STDERR "Name variants for ", $field->{tag}, ": '", join("', '", @result), "'\n";
+    }
+
+    return @result;
+}
+
+
 
 1;
