@@ -221,4 +221,63 @@ sub html_escapes($) {
   }
   return $str;
 }
+
+
+sub remove_diacritics($) {
+  my ( $name ) = $_[0];
+  my $val = $name;
+  # these have been copypasted from jp.perl:
+  $val =~ s/ä/ä/g;
+  $val =~ s/Ä/Ä/g;
+
+  $val =~ s/ö/ö/g;
+  $val =~ s/Ö/Ö/g;
+  # 2019-04-16: Miksi mä tutkin merkkejä, enkä vaan heitä kaikkia diakriitteja
+  # jorpakkoon? Ainakin kaikki graavit ja akuutit voisi klaarata noin...
+  # Mites viron õ?
+  $val =~ s/æ/ä/g;
+  $val =~ s/(Ā|Á|Á|À)/A/g;
+  $val =~ s/á́́/a/g;
+  $val =~ s/(â̂)/a/g; # Nähty tupla-lappalaisnimi: "Mikkâ̂l" (typo?)
+  $val =~ s/(ạ|á|á|ā|â|á|á|à|ã|ą|ă|ắ)/a/g; # Nähty tupla-lappalaisnimi: "Mikkâ̂l" (typo?)
+  $val =~ s/(Č|Č)/C/g;
+  $val =~ s/(ç|č|ç|ć|č|ć)/c/g;
+  $val =~ s/đ/d/g; # Balkan
+  $val =~ s/Đ/D/g; # Balkan Nockovic, Dorde
+  $val =~ s/(Ē|É|Ê)/E/g;
+  $val =~ s/(è̀|é́)/e/;
+  $val =~ s/(ë|é|è|ě|ĕ|ë|ė|é|è|ê|ę|ē|ĕ|ĕ|ě)/e/g; # 2019Q2: nähty tupla-´
+  $val =~ s/(g̓|ǧ)/g/g;
+  $val =~ s/ḥ/h/g;
+  $val =~ s/(ị|ı́|í|ï|ī|ì|í|ï|î)/i/g;
+  $val =~ s/ı/i/g;
+  $val =~ s/(İ|Í)/I/g;
+  $val =~ s/ķ/k/g;
+  $val =~ s/(ł|ļ|ļ)/l/g;
+  $val =~ s/Ł/l/g;
+  $val =~ s/(ń|ň|ñ|ņ|n̦|ń|ñ)/n/g;
+
+  $val =~ s/(ó|ò|õ|ő|ō|ő|ó|ô)/o/g;
+
+  $val =~ s/(Ó|Õ|Ō|Ó)/o/g;
+  $val =~ s/ø/ö/g;
+  $val =~ s/Ø/Ö/g;
+  $val =~ s/(ř|r̆|ř|ṛ)/r/g;
+  $val =~ s/s̆̌|š̌/s/g;
+  $val =~ s/(š|s̆|ş|ś|š|š|š)/s/g; # Poleš̌tšuk, Oleg Nikolajevitš
+  $val =~ s/(Š̌)/S/g;
+  $val =~ s/(Š|Š|Ş|Ṣ|Ş)/S/g; # ?? Miten tämä käsitellään? S? Sh?
+  $val =~ s/(ţ|ț)/t/g;
+  $val =~ s/Ţ/T/g;
+  $val =~ s/ü̈/u/g;
+
+  $val =~ s/(ů|û|ū|ú|ü|ů|ú|ù|ü̈|ü)/u/g; # ü => y?
+  $val =~ s/(Ú|Û)/U/g;
+  $val =~ s/Ý/Y/g;
+  $val =~ s/(ÿ|ý|ý|ỳ|ý)/y/g;
+  $val =~ s/(ž|ż|ž)/z/g;
+  $val =~ s/Ž/Z/g;
+  return $val;
+}
+
 1;
