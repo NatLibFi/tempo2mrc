@@ -50,7 +50,9 @@ our $error_directory = undef;
 
 
 
-our $iso639_3_regexp = "(guw|sjd|smn)";
+# specific language is not https://marc21.kansalliskirjasto.fi/kielet_nimet.htm
+# so this get two 041 fields: one for more generic value + a ISO-639-9 version
+our $iso639_3_regexp = "(guw|sjd)"; 
 # Säveltäjä might be a few hundred years old I guess:
 
 
@@ -136,6 +138,13 @@ sub reject_batch($) {
 	return 1;
     }
 
+    foreach my $record ( @{$marc_records_ref} ) {
+	if ( $record->is_deleted() ) {
+	    print STDERR "BATCH REJECTED! REASON: CDY/DIGY (MARC AS DELETED)\n";
+	    return 1;
+	}
+    }
+    
     # KK is interested only in relatively new publications:
     my $publication_year = ${$marc_records_ref}[0]->get_publication_year();
     if ( $publication_year =~ /^[1-9][0-9]*$/ && $publication_year < 2000 ) {
@@ -143,22 +152,34 @@ sub reject_batch($) {
 	return 1;
     }
 
+    if ( 1 ) {
+	foreach my $record ( @{$marc_records_ref} ) {
+	    my $field = $record->get_first_matching_field('773');
+	    if ( defined($field) && $field->{content} =~ /\x1Fg[^\x1F]*[Rr]aita (\d+)/ ) {
+		my $raita = $1;
+		if ( $raita > $n ) {
+		    print STDERR "BATCH REJECTED! 773\$g TRACK $raita (Set of $n record(s))\n";
+		    return 1;
+		}
+	    }
+	}
+    }
+    
     my $album_title = ${$marc_records_ref}[0]->get_first_matching_field('245');
     if ( !defined($album_title) ) {
 	my $f338 = ${$marc_records_ref}[0]->get_first_matching_field('338');
-	my $content = $f338->{content};
+	my $content = $f338->{content} || '(myös kenttä 338 puuttuu)';
 	$content =~ s/.*?\x1Fa//;
 	$content =~ s/\x1F.*$//;
 	print STDERR "BATCH REJECTED! REASON: MISSING ALBUM TITLE (Set of $n record(s))\t", $content, "\n";
 	return 1;
     }
     
-    foreach my $record ( @{$marc_records_ref} ) {
-	if ( $record->is_deleted() ) {
-	    print STDERR "BATCH REJECTED! REASON: CDY/DIGY (MARC AS DELETED)\n";
-	    return 1;
-	}
 
+
+
+
+    foreach my $record ( @{$marc_records_ref} ) {
 	# Sanity checks. (We might drop the nameless host,
 	# but keep the rest eventually?)
 	my @required_tags = ( '007', '245' );
@@ -1258,8 +1279,9 @@ sub uniq {
 
 sub iso639_3_to_marc_language_code($) {
     my $code = shift;
-    if ( $code eq 'sjd' || $code eq 'smn' ) { return 'smi'; }
+    if ( $code eq 'sjd' ) { return 'smi'; }
     if ( $code eq 'guw' ) { return 'nic'; }
+    if ( $code =~ /^$iso639_3_regexp$/ ) { die(); } # sanity check
     return $code
 }
 
@@ -1829,42 +1851,44 @@ sub process_language_codes($$) { # add 041
     my @languages = grep(! /^zxx$/, @{$languagesP});
     if ( $#languages == -1 ) { return; }
 
+    @languages = uniq(@languages);
+    
+
     my @f041 = ();
 
-    if ( $#languages == 1 ) {
-	# Special treatment for exactly two languages:
-	# They are put into the same field.
-	# However, ISO-639-3 fields can not be in a dual, so use more generic
-	# Marc21 language code in the dual and store ISO-639-3 separately.
-	my $l0 = iso639_3_to_marc_language_code($languages[0]) || $languages[0];
-	my $l1 = iso639_3_to_marc_language_code($languages[1]) || $languages[1];
-	if ( $l0 eq $l1 ) { # Exception!
-	    # Special case: sjd => smi && smn => smi: add only one smi to stack
-	    # (and print separately later on):
-	    if ( $l0 ne $languages[0] && $l1 ne $languages[1] ) {
-		push @languages, $l0;
-	    }
-	}
-	else { # Normal case (fin && swe) and one ISO-639-3 code (fin && smn):
-	    $f041[0] = "  \x1Fd".$l0."\x1Fd".$l1;
-	    # Make sure marc language code is not added again:
-	    # (ISO-639-3 languages remain in the stack)
-	    if ( $l1 eq $languages[1] ) { pop(@languages); }
-	    if ( $l0 eq $languages[0] ) { shift(@languages); }
-	}
+    # A pair is treated differently: both values are put into the same field.
+    # However, ISO-639-3 fields can not be in a dual, so use more generic
+    # Marc21 language code in the dual and store ISO-639-3 separately.
+    if ( $#languages == 1 &&
+	 iso639_3_to_marc_language_code($languages[0]) eq $languages[0] &&
+	 iso639_3_to_marc_language_code($languages[1]) eq $languages[1] ) {
+	# Put the first two elements into 041 as a pair:
+	$f041[0] = "  \x1Fd".$languages[0]."\x1Fd".$languages[1];
+	# Remove them from language list:
+	@languages = ();
     }
-    # Remaining language codes in @languages are printed separately:
+
+    
+    # Remaining language codes in @languages are stored as separate
+    # 041 fields.
+    # First list them:
+    my %seen;
     for ( my $i = 0; $i <= $#languages; $i++ ) { # keep the right order
 	my $curr_lang = $languages[$i];
-	if ( $curr_lang =~ /^${iso639_3_regexp}$/ ) {
+	if ( $seen{$curr_lang} ) {
+	    next;
+	}
+	my $alt_lang = iso639_3_to_marc_language_code($curr_lang);
+	$seen{$alt_lang} = 1;
+	# NB! The standard version of a pair comes first:
+	$f041[$#f041+1] = "  \x1Fd$alt_lang";
+	if ( $curr_lang ne $alt_lang ) {
 	    $f041[$#f041+1] = " 7\x1Fd$curr_lang\x1F2iso639-3";
-	    # Should we do sjd=>smi conversion in any situation here?
+	    $seen{$curr_lang} = 1;
 	}
-	else {
-	    $f041[$#f041+1] = "  \x1Fd$curr_lang";
-	}
+
     }
-    
+    # And then add them:
     for ( my $i = 0; $i <= $#f041; $i++ ) {
 	add_marc_field($marc_recordP, '041', $f041[$i]);
     }
