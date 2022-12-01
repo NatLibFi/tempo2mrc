@@ -527,153 +527,6 @@ sub score_author($$$) {
 
 
 
-
-sub remove_diacritics($) {
-  my ( $name ) = $_[0];
-  my $val = $name;
-  # these have been copypasted from jp.perl:
-  $val =~ s/ä/ä/g;
-  $val =~ s/Ä/Ä/g;
-
-  $val =~ s/ö/ö/g;
-  $val =~ s/Ö/Ö/g;
-  # 2019-04-16: Miksi mä tutkin merkkejä, enkä vaan heitä kaikkia diakriitteja
-  # jorpakkoon? Ainakin kaikki graavit ja akuutit voisi klaarata noin...
-  # Mites viron õ?
-  $val =~ s/æ/ä/g;
-  $val =~ s/(Ā|Á|Á|À)/A/g;
-  $val =~ s/á́́/a/g;
-  $val =~ s/(â̂)/a/g; # Nähty tupla-lappalaisnimi: "Mikkâ̂l" (typo?)
-  $val =~ s/(ạ|á|á|ā|â|á|á|à|ã|ą|ă|ắ)/a/g; # Nähty tupla-lappalaisnimi: "Mikkâ̂l" (typo?)
-  $val =~ s/(Č|Č)/C/g;
-  $val =~ s/(ç|č|ç|ć|č|ć)/c/g;
-  $val =~ s/đ/d/g; # Balkan
-  $val =~ s/Đ/D/g; # Balkan Nockovic, Dorde
-  $val =~ s/(Ē|É|Ê)/E/g;
-  $val =~ s/(è̀|é́)/e/;
-  $val =~ s/(ë|é|è|ě|ĕ|ë|ė|é|è|ê|ę|ē|ĕ|ĕ|ě)/e/g; # 2019Q2: nähty tupla-´
-  $val =~ s/(g̓|ǧ)/g/g;
-  $val =~ s/ḥ/h/g;
-  $val =~ s/(ị|ı́|í|ï|ī|ì|í|ï|î)/i/g;
-  $val =~ s/ı/i/g;
-  $val =~ s/(İ|Í)/I/g;
-  $val =~ s/ķ/k/g;
-  $val =~ s/(ł|ļ|ļ)/l/g;
-  $val =~ s/Ł/l/g;
-  $val =~ s/(ń|ň|ñ|ņ|n̦|ń|ñ)/n/g;
-
-  $val =~ s/(ó|ò|õ|ő|ō|ő|ó|ô)/o/g;
-
-  $val =~ s/(Ó|Õ|Ō|Ó)/o/g;
-  $val =~ s/ø/ö/g;
-  $val =~ s/Ø/Ö/g;
-  $val =~ s/(ř|r̆|ř|ṛ)/r/g;
-  $val =~ s/s̆̌|š̌/s/g;
-  $val =~ s/(š|s̆|ş|ś|š|š|š)/s/g; # Poleš̌tšuk, Oleg Nikolajevitš
-  $val =~ s/(Š̌)/S/g;
-  $val =~ s/(Š|Š|Ş|Ṣ|Ş)/S/g; # ?? Miten tämä käsitellään? S? Sh?
-  $val =~ s/(ţ|ț)/t/g;
-  $val =~ s/Ţ/T/g;
-  $val =~ s/ü̈/u/g;
-
-  $val =~ s/(ů|û|ū|ú|ü|ů|ú|ù|ü̈|ü)/u/g; # ü => y?
-  $val =~ s/(Ú|Û)/U/g;
-  $val =~ s/Ý/Y/g;
-  $val =~ s/(ÿ|ý|ý|ỳ|ý)/y/g;
-  $val =~ s/(ž|ż|ž)/z/g;
-  $val =~ s/Ž/Z/g;
-  return $val;
-}
-
-
-sub get_name_variants($) {
-    # NB! Hammerstein, Oscar, II track_60455260b7cc3b0168460681.json 
-    # 1001  L $$aHammerstein, Oscar,$$bII,$$d1895-1960$$0(FIN11)000195616
-    my ( $field ) = @_;
-    my $subfield_a = $field->get_first_matching_subfield('a');
-
-    if ( !defined($subfield_a) ) {
-	# 2022-06-16 this got triggered.
-	return (); # Try to be robust...
-	die($field->{content});
-    }
-    $subfield_a =~ s/,$//; # What about '.'?
-
-    if ( $debug && $subfield_a =~ /Hammerstein/ ) {
-	print STDERR "GNV: ", $field->toString(), " => ‡a:", $subfield_a, "\n";
-    }
-    
-    my $subfield_b = $field->get_first_matching_subfield('b');
-    if ( defined($subfield_b) ) {
-	$subfield_b =~ s/,$//; # What about '.'?
-	if ( $debug && $subfield_a =~ /Hammerstein/ ) {
-	    print STDERR "GNV: ‡b:", $subfield_b, " in  ", $field->toString(), "\n";
-	}
-    }
-
-    # Add $a as such:
-    my %cands;
-    $cands{$subfield_a} = 1;
-
-    # Yle stores names in "Forename Surname" format.
-    
-
-    if ( $field->{tag} =~ /00$/ ) {
-	# "Surname, Forname":
-	if ( $field->{content} =~ /^1/ ) {
-	    # Assumes single ','
-	    if ( $subfield_a =~ /^([^,]+), ([^,]+)$/ ) {
-		my $tmp = "$2 $1";
-		$cands{$tmp} = 1;
-		
-		# With $b: Hammerstein, Oscar, II
-		if ( defined($subfield_b) ) {
-		    $tmp = $subfield_a . ", " . $subfield_b;
-		    $cands{$tmp} = $tmp;
-		}
-	    }
-	}
-	# "Forname Surname"
-	elsif ( $field->{content} =~ /^0/ ) {
-	    # TODO: handle $b 
-	    if ( defined($subfield_b) ) {
-		# $a Johannes Paavali $b II
-		my $tmp = $subfield_a . " " . $subfield_b;
-		$cands{$tmp} = $tmp;
-	    }		
-	}
-    }
-
-    # TODO: Handle case normalizations: van vs Van..
-
-    foreach my $curr_cand ( sort keys %cands ) {
-	my $tmp = $curr_cand;
-	if ( $tmp =~ s/\b(af|van|von)\b/\u$1/ ) {
-	    $cands{$tmp} = $curr_cand;
-	}
-	elsif ( $tmp =~ s/\b(Af|Van|Von)\b/\l$1/ ) {
-	    $cands{$tmp} = $curr_cand;
-	}
-	
-    }
-    # TODO: Handle normalizations II: diacritics
-    foreach my $curr_cand ( sort keys %cands ) {
-	my $tmp = &remove_diacritics($curr_cand);
-	if ( $tmp ne $curr_cand ) {
-	    $cands{$tmp} = $curr_cand;
-	}
-    }
-
-    my @result = sort keys %cands;
-    if ( $debug && $subfield_a =~ /(Hammerstein|Gustaf von|Hertzen|Leeuwen)/ ) {
-	print STDERR "Name variants for ", $field->{tag}, ": '", join("', '", @result), "'\n";
-    }
-
-    return @result;
-}
-
-
-
 sub function2ids($$) {
     my ( $authors_ref, $function ) = @_;
     my %authors = %{$authors_ref};
@@ -1036,6 +889,10 @@ sub tempo_author_to_marc_field($$$) {
     my $n_cands = $#cand_records+1;
     if ( $debug ) {
 	print STDERR "author ($name) => asteri: $n_cands cand(s) and ", ($#alt_cand_records+1), " alt cand(s) found.\n";
+	foreach $cand_record ( @cand_records ) {
+	    my $id = $cand_record->get_first_matching_field('001');
+	    print STDERR "  ID: $id\n";
+	}
     }
     #if ( $#cand_records > -1 ) { die(); } # test: found something
 
