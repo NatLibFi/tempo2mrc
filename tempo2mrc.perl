@@ -152,7 +152,8 @@ sub reject_batch($) {
 	return 1;
     }
 
-    if ( 1 ) {
+    if ( 0 ) {
+	# Won't work for multiparts...
 	foreach my $record ( @{$marc_records_ref} ) {
 	    my $field = $record->get_first_matching_field('773');
 	    if ( defined($field) && $field->{content} =~ /\x1Fg[^\x1F]*[Rr]aita (\d+)/ ) {
@@ -262,9 +263,9 @@ sub get_tempo_id_from_marc_record($) {
 }
 
 
-my $rooli = "(mahdollinen | muut? |yhtyeen )?(avustajat?|esittäjät?|jäsen|jäsenet|mahdollinen avustaja|muusikot|soitinsolistit|solistit|säestävät muusikot)";
-my $yhtyeen = "(?:muut )?(?:jousikvartetin|jousikvintetin|kamariorkesterin|kamariyhtyeen|kuoron|lauluyhtyeen|orkesterin|säestävän yhtyeen|yhtyeen)";
-my $jossakin = "(teoskohtaisesti )?(albumin |levyn )?(albumitasolla|esittelylehtisessä|kannessa|kansilehdessä|oheislehtisessä|oheistiedoissa|sisäkannessa|tekstilehtisessä|tiedoissa|yleistietodokumentissa)";
+my $rooli = "(?:mahdollinen | muut? |yhtyeen )?(?:avustajat?|esittäjät?|jäsen|jäsenet|mahdollinen avustaja|muusikot|soitinsolistit|solistit|säestävät muusikot)";
+my $yhtyeen = "(?:muut )?(?:jousikvartetin|jousikvintetin|jousisekstetin|kamariorkesterin|kamariyhtyeen|kuoron|lauluyhtyeen|orkesterin|säestävän yhtyeen|yhtyeen)";
+my $jossakin = "(?:teoskohtaisesti )?(?:albumin |levyn )?(?:albumitasolla|esittelylehtisessä|kannessa|kansilehdessä|oheislehtisessä|oheistiedoissa|sisäkannessa|tekstilehtisessä|tiedoissa|yleistietodokumentissa)";
 
 
 sub description_cleanup($) {
@@ -583,15 +584,17 @@ sub normalize_musicians($) {
 	${$musicians_ref} =~ s/. Sekä: /, /; # KS 2016-02-22
     }
     ${$musicians_ref} =~ s/\)\. /\), /g;
+    ${$musicians_ref} =~ s/\), Lisäksi/\). Lisäksi/g;
     ${$musicians_ref} =~ s/\)\.$/\)/g;
 }
 
 sub description2musicians($) {
     my ( $description_ref ) = @_;
 
-    print STDERR "D2M ",  ${$description_ref}, "\n";
-    if ( ${$description_ref} =~ s/(?:^| )((?:Jousisekstetin jäsenet|Jäsenet|Yhtyeen jäsenet): .*)$// ) {
+    print STDERR "D2M '",  ${$description_ref}, "'\n";
+    if ( ${$description_ref} =~ s/(?:^| )((?:$yhtyeen )?(?:$rooli): .*)$//i ) {
 	my $musicians = $1;
+	if ( $musicians !~ /^[A-Z]/ ) { die(); }
 	normalize_musicians(\$musicians);
 	return $musicians;
     }
@@ -1309,10 +1312,8 @@ sub languages_to_008_35_37 {
     if ( $languages[0] =~ /^$iso639_3_regexp$/ ) {
 	# Language might not have an official MARC language code.
 	# However, it might belong to a group that has such a code.
-	my $alt = iso639_3_to_marc_language_code($languages[0]);
-	if ( defined($alt) ) { return $alt; }
-	die();
-	return '|||';
+	return iso639_3_to_marc_language_code($languages[0]);
+	# return '|||'; # Never gets here...
     }
     if ( length($languages[0]) != 3 ) { die(); }
    return $languages[0];
@@ -1878,8 +1879,19 @@ sub process_language_codes($$) { # add 041
 	if ( $seen{$curr_lang} ) {
 	    next;
 	}
+
+	# NB! Alt comes first! Generic 
 	my $alt_lang = iso639_3_to_marc_language_code($curr_lang);
+	if ( $curr_lang eq $alt_lang ) {
+	    # Sami languages still map to generic language group despite
+	    # the more specific code being supported by marc as well:
+	    # https://www.kiwi.fi/pages/viewpage.action?spaceKey=kumea&title=2022-10-05+ja+2022-10-12+-+yhteismuistio#id-20221005ja20221012yhteismuistio-3)Kysymys:Saamenkielisenaineistonkielimerkinn%C3%A4t,jatkokysymys
+	    if ( $curr_lang =~ /^(sjd|sme|smn|sms)$/ ) {
+		$alt_lang = 'smi';
+	    }
+	}
 	$seen{$alt_lang} = 1;
+
 	# NB! The standard version of a pair comes first:
 	$f041[$#f041+1] = "  \x1Fd$alt_lang";
 	if ( $curr_lang ne $alt_lang ) {
