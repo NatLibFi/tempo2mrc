@@ -1241,6 +1241,8 @@ sub string_replace($$$) {
 
 
 sub unicode_strip_diacritics($) {
+    die();
+    # Deprecated. Use remove_diacritics from nvolk_utf8.pm
   my $str = $_[0];
 
   $str =~ s/́//g;
