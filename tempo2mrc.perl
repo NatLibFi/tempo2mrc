@@ -125,6 +125,7 @@ sub int2finnish_month_name($) {
 
 my %language2code = ( 'englanniksi' => 'eng',
 		      'latviaksi' => 'lav',
+		      'puolaksi' => 'pol',
 		      'ranskaksi' => 'fre',
 		      'ruotsiksi' => 'swe',
 		      'saksaksi' => 'ger',
