@@ -770,7 +770,6 @@ sub educated_guess_is_person($) {
     if ( $name =~ /[0-9]/ ) {
 	if ( defined($human_names{$name}) ) {
 	    # NB! No need to list the ones with an authority record
-	    die(); # untested after mods
 	    return 1;
 	}
 	if ( $debug ) {
