@@ -127,7 +127,7 @@ sub list_multipart_records_for_505($) {
     }
     if ( $#{$record_array_ref} != $#list ) {
 	# Some multipart parts are nameless
-	print STDERR "WARNING\tSize mismatch between N multiparts and N 505\$a elements.\n";
+	print STDERR "WARNING\tSize mismatch between ", ($#{$record_array_ref}+1), " multiparts and ", ($#list+1), " subfield 505\$a elements.\n";
     }
     return @list;
 }
@@ -191,25 +191,27 @@ sub multipart_records2field_773_content($$) {
     my %result;
 
     foreach my $g ( @f773g ) {
-	my $index;
-	my $key;
-	if ( $g =~ /^Raita (\d+)$/ ) {
-	    $index = $1;
-	    $key = 'DEFAULT';
-	}
-	elsif ( $g =~ /^Levy (\d+), raita (\d+)$/ ) {
+	if ( defined($g) ) {
+	    my $index;
+	    my $key;
+	    if ( $g =~ /^Raita (\d+)$/ ) {
+		$index = $1;
+		$key = 'DEFAULT';
+	    }
+	    elsif ( $g =~ /^Levy (\d+), raita (\d+)$/ ) {
 		$index = $2;
 		$key = $1;
-	}
-	else {
-	    die();
-	}
-	
-	if ( !defined($result{$key}) ) {
-	    $result{$key} = $index;
-	}
-	else {
-	    $result{$key} .= ", ".$index;
+	    }
+	    else {
+		die();
+	    }
+	    
+	    if ( !defined($result{$key}) ) {
+		$result{$key} = $index;
+	    }
+	    else {
+		$result{$key} .= ", ".$index;
+	    }
 	}
     }
     
@@ -245,7 +247,7 @@ sub multipart_records2field_773_content($$) {
 	}
     }
 
-    if ( !$new_g ) { die(); }
+    if ( !$new_g ) { return; }
     $new_g =~ s/, Rai/, rai/;
     
     my $f773_content = $f773[0]->{content};
@@ -269,7 +271,6 @@ sub get_multipart_records_from_record_array_ref($$) {
 
     @records2merge = sort_multiparts_by_773g(\@records2merge);
     
-    if ( $#records2merge < 1 ) { die(); } # sanity check
     print STDERR ($#records2merge+1), " records(s) to be merged to $multipart_id...\n";    
     return @records2merge;
 }
@@ -336,6 +337,8 @@ sub handle_multiparts($) {
 
 
 	# Get base record (there should always be exactly one appr 035$a)...
+	# 638068df5a02ae06e623b24b is a corrupted multipart that returns
+	# 0 parts of a multipart...
 	my $base_record_ref = get_base_record_ref($marc_record_array_ref, $multipart_id);
 
 	if ( !defined($base_record_ref) ) { die(); }
