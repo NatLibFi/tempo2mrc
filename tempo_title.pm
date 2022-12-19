@@ -27,10 +27,11 @@ sub extract_media_from_title($$) {
 	}
 	return $value.' CD-äänilevyä';
     }
-    if ( $expected_value > 1 ) { die(); }
+
     if ( ${$title_ref} =~ s/\s*\(([2-9]|[1-9][0-9]+)[^\)]+\)// ) {
 	die($1);
     }    
+    # if ( $expected_value > 1 ) { return undef; }
     return undef;
 }
 
