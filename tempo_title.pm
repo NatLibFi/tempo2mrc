@@ -100,15 +100,17 @@ sub extract_analytical_title($) {
 sub process_title_incipit($$) {
     my ( $tempo_titleP, $marc_recordP ) = @_;
 
-    my $incipit = extract_incipit($tempo_titleP);
-
-    if ( !defined($incipit) ) { return; }
-	
-    add_marc_field($marc_recordP, '031', "  \x1Ft$incipit");
-    if ( !$robust ) {
-	# Sanity check: can't have two incipits:
-	$incipit = extract_incipit($tempo_titleP);
-	if ( defined($incipit) ) { die(); }
+    # There shouldn't be multiple incipits, but we have
+    # "1. Jumalien keinu (tässä: Jumalten keinu) (Kenen korkeat jumalat keinuunsa ottavat kerta -). - 2. Hymni tulelle (Ken tulta on, se tulta palvelkoon -). - 3. Kanto, sellolle (soolosellolle)"
+    # in host 6371f0485a02ae06e6090449.
+    my $incipit;
+    my $n = 0;
+    while ( $incipit = extract_incipit($tempo_titleP) ) {
+	add_marc_field($marc_recordP, '031', "  \x1Ft$incipit");
+	$n++;
+	if ( $n > 1 ) {
+	    print STDERR "WARNING\tMultiplie 031\$t incipits!\n";
+	}
     }
 }
 
