@@ -266,7 +266,7 @@ sub get_tempo_id_from_marc_record($) {
 }
 
 
-my $rooli = "(?:mahdollinen | muut? |yhtyeen )?(?:avustajat?|esittäjät?|jäsen|jäsenet|mahdollinen avustaja|muusikot|soitinsolistit|solistit|säestävät muusikot)";
+my $rooli = "(?:levyllä esiintyvät |mahdollinen | muut? |yhtyeen )?(?:avustajat?|esittäjät?|jäsen|jäsenet|mahdollinen avustaja|muusikot|soitinsolistit|solistit|säestävät muusikot)";
 my $yhtyeen = "(?:muut )?(?:jousikvartetin|jousikvintetin|jousisekstetin|kamariorkesterin|kamariyhtyeen|kuoron|lauluyhtyeen|orkesterin|säestävän yhtyeen|yhtyeen)";
 my $jossakin = "(?:teoskohtaisesti )?(?:albumin |levyn )?(?:albumitasolla|esittelylehtisessä|kannessa|kansilehdessä|oheislehtisessä|oheistiedoissa|sisäkannessa|tekstilehtisessä|tiedoissa|yleistietodokumentissa)";
 
@@ -1695,7 +1695,7 @@ sub process_descriptions2language_notes($$$) {
     
     my $n_hits = 0;
 
-    my $esittelylehtinen = "(?:Esittelylehtinen|Esittelylehtinen ja synopsis|Esittelylehtinen ja tekstilehtinen|Libretto|Tekstilehtinen)(?: myös)?";
+    my $esittelylehtinen = "(?:Esittelylehtinen|Esittelylehtinen ja synopsis|Esittelylehtinen ja tekstilehtinen|Libretto|Tekstilehtinen|Tekstilehtinen ja esittelylehtinen)(?: myös)?";
 
 
     # YLE: "Oheistiedot
@@ -1722,9 +1722,10 @@ sub process_descriptions2language_notes($$$) {
     # All related language info is stored in 040$g.
     for ( my $i=0; $i <= $#{$descriptions_ref}; $i++ ) {
 
-	# typofixes:
+	# typo fixes:
 	$descriptions_ref->[$i] =~ s/sittelylehtien /sittelylehtinen /;
-
+	$descriptions_ref->[$i] = trim_all($descriptions_ref->[$i]);
+	
 	my $add_300e = 0;
 	print STDERR "TEST: '", $descriptions_ref->[$i], "'\n";
 	while ( $descriptions_ref->[$i] =~ s/(?:^| )($esittelylehtinen(?: (?:[a-z]|ä)+ksi,)*(?: (?:[a-z]|ä)+ksi ja)? (?:[a-z]|ä)+ksi)(?:\.?$|\. )/ / ) {
