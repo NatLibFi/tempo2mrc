@@ -128,7 +128,8 @@ my %language2code = ( 'englanniksi' => 'eng',
 		      'ranskaksi' => 'fre',
 		      'ruotsiksi' => 'swe',
 		      'saksaksi' => 'ger',
-		      'suomeksi' => 'fin' );
+		      'suomeksi' => 'fin',
+		      'venäjäksi' => 'rus' );
 
 sub reject_batch($) {
     my $marc_records_ref = shift;
@@ -1723,9 +1724,10 @@ sub process_descriptions2language_notes($$$) {
 	$descriptions_ref->[$i] =~ s/sittelylehtien /sittelylehtinen /;
 
 	my $add_300e = 0;
-	while ( $descriptions_ref->[$i] =~ s/(?:^| )($esittelylehtinen(?: (?:[a-z]|ä)+ksi,)*(?: (?:[a-z]|ä)+ksi ja)? (?:[a-z]|ä)+ksi\.)($| )/ / ) {
-	    my $text = $1;
-	    
+	print STDERR "TEST: '", $descriptions_ref->[$i], "'\n";
+	while ( $descriptions_ref->[$i] =~ s/(?:^| )($esittelylehtinen(?: (?:[a-z]|ä)+ksi,)*(?: (?:[a-z]|ä)+ksi ja)? (?:[a-z]|ä)+ksi)(?:\.?$|\. )/ / ) {
+	    my $text = $1.'.';
+	    print STDERR "TEST PASS...\n";
 	    $descriptions_ref->[$i] = trim_all($descriptions_ref->[$i]);
 	    $n_hits++;
 
@@ -1738,7 +1740,8 @@ sub process_descriptions2language_notes($$$) {
 		add_languages_to_041g($marc_recordP, $text);
 	    }
 	}
-
+	print STDERR "TEST2: '", $descriptions_ref->[$i], "'\n";
+	
 	if ( $descriptions_ref->[$i] =~ s/^$esittelylehtinen( esityskielellä)?\.$//i ) {
 	    $add_300e = 1;
 	}
