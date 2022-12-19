@@ -889,7 +889,7 @@ sub tempo_author_to_marc_field($$$) {
     my $n_cands = $#cand_records+1;
     if ( $debug ) {
 	print STDERR "author ($name) => asteri: $n_cands cand(s) and ", ($#alt_cand_records+1), " alt cand(s) found.\n";
-	foreach $cand_record ( @cand_records ) {
+	foreach my $cand_record ( @cand_records ) {
 	    my $id = $cand_record->get_first_matching_field('001');
 	    print STDERR "  ID: $id\n";
 	}
