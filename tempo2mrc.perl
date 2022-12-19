@@ -130,6 +130,7 @@ my %language2code = ( 'englanniksi' => 'eng',
 		      'ruotsiksi' => 'swe',
 		      'saksaksi' => 'ger',
 		      'suomeksi' => 'fin',
+		      'tanskaksi' => 'dan',
 		      'venäjäksi' => 'rus' );
 
 sub reject_batch($) {
