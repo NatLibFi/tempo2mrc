@@ -193,6 +193,7 @@ sub merge_names($$) {
 # Finnish three-letter abbreviations come from addition notes
 our %norm_funcs = (
     'arranger' => 'sovittaja',
+    'conductor' => 'johtaja', # TODO: better term? orkesterinjohtaja',
     'ensemble' => 'esittäjä',
     # 'author' => 'kirjoittaja',
     'composer' => 'säveltäjä',
@@ -202,7 +203,7 @@ our %norm_funcs = (
     'sov' => 'sovittaja',
     'special-lyricist' => 'sanoittaja', # sanoittaja (ekspressio)?
     'säv' => 'säveltäjä'
-    ); 
+    );
 # Huh: 'special-lyricist'!
 
 sub normalize_function($) {
