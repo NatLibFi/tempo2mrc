@@ -592,19 +592,25 @@ sub description2musicians($) {
     my ( $description_ref ) = @_;
 
     print STDERR "D2M '",  ${$description_ref}, "'\n";
+
+
+
     if ( ${$description_ref} =~ s/(?:^| )((?:$yhtyeen )?(?:$rooli): .*)$//i ) {
 	my $musicians = $1;
-	if ( $musicians !~ /^[A-Z]/ ) { die(); }
-	normalize_musicians(\$musicians);
-	return $musicians;
+	if ( $musicians =~ /^[A-Z]/ ) {
+	    normalize_musicians(\$musicians);
+	    return $musicians;
+	}
     }
 
     if ( ${$description_ref} =~ /jäsenet/i ) {
+	# 'Jere Ijäs ja Monacon Työväen Palloilijat. Muut jäsenet: Tom Nyman (bassokitara). Anssi Nykänen (rummut). Sekä: Viitasen Piia (taustalaulu). J. Karjalainen (huuliharppu). Miikka Paatelainen (steel-kitara).'
 	if ( ${$description_ref} =~ s/^(.*) ja (.*?)\. Muut jäsenet: (.*)$// ) {
 	    my $musicians = "$1 ja $2: $1, $3";
 	    normalize_musicians(\$musicians);
 	    return $musicians;
 	}
+	
 	die(${$description_ref});
     }
 
