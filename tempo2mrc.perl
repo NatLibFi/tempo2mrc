@@ -266,8 +266,9 @@ sub get_tempo_id_from_marc_record($) {
 }
 
 
-my $rooli = "(?:levyllä esiintyvät |mahdollinen | muut? |yhtyeen )?(?:avustajat?|esittäjät?|jäsen|jäsenet|mahdollinen avustaja|muusikot|soitinsolistit|solistit|säestävät muusikot)";
+
 my $yhtyeen = "(?:muut )?(?:jousikvartetin|jousikvintetin|jousisekstetin|kamariorkesterin|kamariyhtyeen|kuoron|lauluyhtyeen|orkesterin|säestävän yhtyeen|yhtyeen)";
+my $rooli = "(?:levyllä esiintyvät |mahdollinen |muut? )?(?:avustajat?|esittäjät?|jäsen|jäsenet|jäseniä|mahdollinen avustaja|muusikot|soitinsolistit|solistit|soololaulaja|säestävät muusikot)";
 my $jossakin = "(?:teoskohtaisesti )?(?:albumin |levyn )?(?:albumitasolla|esittelylehtisessä|kannessa|kansilehdessä|oheislehtisessä|oheistiedoissa|sisäkannessa|tekstilehtisessä|tiedoissa|yleistietodokumentissa)";
 
 
@@ -276,6 +277,7 @@ sub description_cleanup($) {
 
     ${$description_ref} =~ s/^ +//gm;
     ${$description_ref} =~ s/ +$//gm;
+    print STDERR "DC: '", ${$description_ref}, "'\n";
     while ( ${$description_ref} =~ s/(^|\. |  )(?:$yhtyeen )?(?:$rooli|$rooli ja $rooli) lueteltu $jossakin(?:( ja| sekä) $jossakin)?(?:$|\.)/$1/im ) {
 	# die();
 	${$description_ref} =~ s/^ +//gm;
@@ -596,11 +598,23 @@ sub description2musicians($) {
 
     print STDERR "D2M '",  ${$description_ref}, "'\n";
 
-
-
-    if ( ${$description_ref} =~ s/(?:^| )((?:$yhtyeen )?(?:$rooli): .*)$//i ) {
+    if ( ${$description_ref} =~ s/^(.*) ja (.*?)\. Muut jäsenet: (.*)$// ) {
+	my $musicians = "$1 ja $2: $1, $3";
+	normalize_musicians(\$musicians);
+	return $musicians;
+    }
+    # Emil Brandqvist Trio. Muut jäsenet: Max Thornberg (kontrabasso). Tuomas Turunen (piano).
+    if ( ${$description_ref} =~ s/^(\S+ \S+) (Trio)\. Muut jäsenet: (.*)$// ) {
+	my $musicians = "$1 $2: $1, $3";
+	normalize_musicians(\$musicians);
+	return $musicians;
+    }
+    
+    my $tmp = ${$description_ref};
+    if ( $tmp =~ s/(?:^| )((?:$yhtyeen )?(?:$rooli): .*)$//i ) {
 	my $musicians = $1;
 	if ( $musicians =~ /^[A-Z]/ ) {
+	    ${$description_ref} = $tmp;
 	    normalize_musicians(\$musicians);
 	    return $musicians;
 	}
@@ -608,11 +622,6 @@ sub description2musicians($) {
 
     if ( ${$description_ref} =~ /jäsenet/i ) {
 	# 'Jere Ijäs ja Monacon Työväen Palloilijat. Muut jäsenet: Tom Nyman (bassokitara). Anssi Nykänen (rummut). Sekä: Viitasen Piia (taustalaulu). J. Karjalainen (huuliharppu). Miikka Paatelainen (steel-kitara).'
-	if ( ${$description_ref} =~ s/^(.*) ja (.*?)\. Muut jäsenet: (.*)$// ) {
-	    my $musicians = "$1 ja $2: $1, $3";
-	    normalize_musicians(\$musicians);
-	    return $musicians;
-	}
 	
 	die(${$description_ref});
     }
