@@ -234,6 +234,27 @@ sub is_identical($$) {
     return 0;
 }
 
+sub set_value($$) {
+    my ( $self, $content ) = @_;
+    # Raison d'etrê: sanity checks!
+    if ( $self->{tag} =~ /^(0[1-9]|[1-9])/ ) {
+	if ( $content !~ /^([0-9 ])/ ) {
+	    die("Illegal IND1: '$1'");
+	}
+	if ( $content !~ /^.([0-9 ])/ ) {
+	    die("Illegal IND2: $1");
+	}
+	if ( $content !~ /^..\x1F/ ) {
+	    die("Unexpected 3rd char: '$content'");
+	}
+	if ( $content =~ /\x1F([^a-z0-9])/ ) {
+	    die("Illegal subfield: '$1'");
+	}
+    }
+    
+    $self->{content} = $content;
+    
+}
 sub remove_identical_subfields {
     # NB! Not wise enough to handle punctuation.
     my ( $self, $legal_subfields ) = @_;
@@ -323,6 +344,7 @@ sub field_requires_replication {
 
 
 
+
 ## fix_punctuation() is currently just a collection of hacks.
 # Try to generalize at some point...
 sub fix_punctuation_773($) {
@@ -335,7 +357,7 @@ sub fix_punctuation_773($) {
 	     $subfield_stack[$i+1] =~ /^[stbdhmkzxogq]/ ) {
 	    if ( $subfield_stack[$i] !~ /\. -$/ ) {
 		$subfield_stack[$i] .= ". -";
-		$subfield_stack[$i] =~ s/\.\. -$/. -/;
+		$subfield_stack[$i] =~ s/ *[,\.\/;:=]\. -$/. -/;
 	    }
 	}
     }
@@ -377,7 +399,7 @@ my %default_subfield_order = ( '028' => 'baq',
 			       '700' => 'abcqde059',
 			       '710' => 'ae059',
 			       # 773$i, 773$b...
-			       '773' => '67wastbdhmkzxorgq',
+			       '773' => '67wastpbdhmkzxorgq',
 			       '800' => 'abcqde059',
 			       '810' => 'ae059',
 			       '973' => '7watbdhmkzxorgq' );
@@ -615,7 +637,7 @@ sub new {
     }
     elsif ( $data =~ /^</ ) {
 	if ( !$self->_process_marcxml($data) ) {
-	    print STDERR "Record is not marcxml, trying OAI...\n";
+	    #print STDERR "Record is not marcxml, trying OAI...\n";
 	    if ( !$self->_process_oai_marc($data) ) {
 		die();
 		return undef;
@@ -801,6 +823,7 @@ sub _process_oai_marc($$) {
     my $record = main::xml_get_first_instance($xml, 'record');
     $record = main::xml_get_first_instance($record, 'oai_marc');
     $record = main::only_contents($record);
+
     my $proceed = 1;
     my $seen_ldr = 0;
     while ( $proceed ) {
@@ -816,6 +839,8 @@ sub _process_oai_marc($$) {
 	    my $leader = $1;
 	    $leader =~ s/\#/ /g; # TAV2-data, Mintun bugiraportti, Melinda 7322871:
 	    $leader =~ tr/^/ /;
+	    if ( length($leader) != 24 ) { die("LDR lenght is not 24!"); }
+	    
 	    $self->{leader} = $leader;
 	    #print STDERR "Add leader '$leader'\n"; die();
 	    $seen_ldr = 1;
@@ -888,21 +913,28 @@ sub _process_oai_marc($$) {
     return 1;
     
 }
-sub add_field($$$) {
-    my ( $self, $tag, $content ) = @_;
-    my $new_field = new nvolk_marc_field($tag, $content);
+
+sub insert_field($$) {
+    my ( $self, $new_field ) = @_;
     # Check data field content:
-    if ( $tag =~ /^(0[1-9]|[1-9][0-9])[0-9]$/ ) {
+    if ( $new_field->{tag} =~ /^(0[1-9]|[1-9][0-9])[0-9]$/ ) {
 	# This crashes on purpose, so that programming errors
 	# won't cause terrible damage.
 	# However, this means that some corrupted data needs to be fixed
 	# manually.
-	unless ( $content =~ /^[a-z0-9 ]{2}\x1F/ ) {
-	    die($content);
+	unless ( $new_field->{content} =~ /^[a-z0-9 ]{2}\x1F/ ) {
+	    die($new_field->toString());
 	}
     }
     push(@{$self->{fields}}, $new_field);
     return $new_field;
+
+}
+
+sub add_field($$$) {
+    my ( $self, $tag, $content ) = @_;
+    my $new_field = new nvolk_marc_field($tag, $content);
+    return $self->insert_field($new_field);
 }
 
 sub add_unique_field($$$) {
@@ -1942,8 +1974,8 @@ sub get_publication_year_008($) {
     my $f008 = $self->get_first_matching_field('008');
     if ( defined($f008) ) {
 	# 008/06 sanity checks:
-	if ( $f008 !~ /^......[cdeikmnpqrstu]/ ) { return 'uuuu'; }
-	return substr($f008, 7, 4);
+	if ( $f008->{content} !~ /^......[cdeikmnpqrstu]/ ) { return 'uuuu'; }
+	return substr($f008->{content}, 7, 4);
   }
   return 'uuuu';
 }
