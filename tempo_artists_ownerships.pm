@@ -181,6 +181,12 @@ sub merge_names($$) {
 	    }
 	    ${$nameP1}{$key} = $val;
 	}
+	elsif ( $key eq 'index' ) {
+	    if ( ${$nameP1}{$key} > $val ) {
+		${$nameP1}{$key} = $val;
+		print STDERR "RESET INDEX: ", ${$nameP1}{'name'}, " = $val\n";
+	    }
+	}
 	else {
 	    print STDERR "1: $key:'", ${$nameP1}{$key}, "'\n";
 	    print STDERR "2: $key:'$val'\n";
@@ -238,13 +244,14 @@ sub get_tempo_authors($$$) {
     my ( $head, $arr_ref, $marc_record_ref ) = @_;
 
     my %authors;
-    # should artists_publishing_ownerships[0] come before
+    # Should artists_publishing_ownerships[0] come before
     # artists_master_ownerships[0] or vice versa?
     # Currently index (=position) is shared.
     my @prefixes = ( "/$head/artists_publishing_ownerships", "/$head/artists_master_ownerships" );
     for ( my $i=0; $i <= $#prefixes; $i++ ) {
 	my $curr_prefix = $prefixes[$i];
 	my $index = 0;
+	my $index2 = ( $curr_prefix =~ /master/ ? 100 : 0 );
 	my @data;
 	print STDERR "FOO: '$curr_prefix'\n";
 	while ( @data = extract_keys($curr_prefix."[$index]", $arr_ref) ) {
@@ -281,10 +288,10 @@ sub get_tempo_authors($$$) {
 		    # index (eg: she'll get 100, and the other guy gets 700).
 		    # However, we currently have two indexes, so this
 		    # needs thinking...
+		    $name_data{'index'} = $index + $index2;
 		    if ( $new_id ) {
-			$name_data{'index'} = $index;
 			$authors{$id} = \%name_data;
-			print STDERR "INDEX: ", $authors{$id}{'index'}, "\n";
+			print STDERR "INDEX: ", $curr_name, " = ", $authors{$id}{'index'}, "\n";
 		    }
 		    else {
 			merge_names($authors{$id}, \%name_data);
@@ -537,7 +544,7 @@ sub function2ids($$) {
     my ( $authors_ref, $function ) = @_;
     my %authors = %{$authors_ref};
     
-    my @all_auth_ids = sort keys %authors;
+    my @all_auth_ids = sort { $authors{$a}{'index'} <=> $authors{$b}{'index'} } keys %authors;
 
     my @esittaja_auth_ids = ();
     foreach my $auth_id ( @all_auth_ids ) {
@@ -545,7 +552,8 @@ sub function2ids($$) {
 	    $esittaja_auth_ids[$#esittaja_auth_ids+1] = $auth_id;
 	}
     }
-    
+
+
     return @esittaja_auth_ids;
 }	
 
@@ -555,7 +563,7 @@ sub get_best_author($$$) {
     my %authors = %{$authors_ref};
     # Unlike
 
-    my @auth_ids = sort keys %authors; # TODO: How about getting em in some priority order?
+    my @auth_ids = sort { $authors{$b}{'index'} <=> $authors{$a}{'index'} } keys %authors; # TODO: How about getting 'em in some priority order?
 
     # If there's only one author in the record, make it 1XX:
     if ( $#auth_ids == 0 ) {
@@ -990,6 +998,11 @@ sub tempo_author_to_marc_field($$$) {
     if ( defined($sf0) ) {
 	$content .= "\x1F0".$sf0;
     }
+
+    if ( 0 && $debug ) { # For debugging X00 order
+	my $index = $author{'index'};
+	$content .= "\x1F9INDEX=$index";
+    }
     
     main::add_marc_field($marc_record_ref, $hundred.$ten.'0', $content);
 }
@@ -1024,45 +1037,46 @@ sub compare_two_authors($$$$$) {
     if ( $rulers_score < $pretenders_score ) {
 	return $pretender_id;
     }
+
     # Equal rank! Base the decision on index in tempo JSON:
     if ( $ruler{'index'} <= $pretender{'index'} ) {
 	return $ruler_id;
     }
     return $pretender_id;    
 
-    # NB! We might need to rethink this for non-classic hosts...
-    if ( 1 || $is_classical_music || !$is_host ) {
-	for ( my $i=0; $i <= $#X00_scorelist; $i++ ) {
-	    my $curr_funk = $X00_scorelist[$i];
-	    if ( defined($ruler{$curr_funk}) ) {
-		if ( !defined($pretender{$curr_funk}) ) {
-		    if ( 0 && $debug ) {
-			print STDERR " ", $ruler{'name'}, " is $curr_funk, and thus precedes ", $pretender{'name'}, "\n";
-		    }
-		    return $ruler_id;
-		}
-
-	    }
-	    elsif ( defined($pretender{$curr_funk}) ) {
-		if ( 0 && $debug ) {
-		    print STDERR " ", $pretender{'name'}, " is $curr_funk, and thus precedes ", $ruler{'name'}, "\n";
-		}
-		return $pretender_id;
-	    }
-	}
-    }
-    else {
-	# Fono took the first 190 field, but what if counterpair for Fono-190...
-	die();
-    }
-    return $ruler_id;
+#    # NB! We might need to rethink this for non-classic hosts...
+#    if ( 1 || $is_classical_music || !$is_host ) {
+#	for ( my $i=0; $i <= $#X00_scorelist; $i++ ) {
+#	    my $curr_funk = $X00_scorelist[$i];
+#	    if ( defined($ruler{$curr_funk}) ) {
+#		if ( !defined($pretender{$curr_funk}) ) {
+#		    if ( 0 && $debug ) {
+#			print STDERR " ", $ruler{'name'}, " is $curr_funk, and thus precedes ", $pretender{'name'}, "\n";
+#		    }
+#		    return $ruler_id;
+#		}
+#
+#	    }
+#	    elsif ( defined($pretender{$curr_funk}) ) {
+#		if ( 0 && $debug ) {
+#		    print STDERR " ", $pretender{'name'}, " is $curr_funk, and thus precedes ", $ruler{'name'}, "\n";
+#		}
+#		return $pretender_id;
+#	    }
+#	}
+#    }
+#    else {
+#	# Fono took the first 190 field, but what if counterpair for Fono-190...
+#	die();
+#    }
+#    return $ruler_id;
 }
 
 
 sub get_best_remaining_author($$$) {
     my ( $is_classical_music, $is_host, $authors_ref ) = @_;
     my %authors = %{$authors_ref};
-    my @author_ids = sort keys %authors;
+    my @author_ids = sort { $authors{$a}{'index'} <=> $authors{$b}{'index'} } keys %authors;
     my $id = undef;
     for ( my $i=0; $i <= $#author_ids; $i++ ) {
 	my $curr_id = $author_ids[$i];
