@@ -20,9 +20,10 @@ $X00_score{'säveltäjä'} = 100;
 $X00_score{'sanoittaja'} = 90;
 $X00_score{'sovittaja'} = 80;
 $X00_score{'editointi'} = 70; # NB! TODO: Not really supported currently...
-$X00_score{'johtaja'} = 60;
-$X00_score{'orkesterinjohtaja'} = 60;
-$X00_score{'esittäjä'} = 50;
+$X00_score{'esittäjä'} = 60;
+$X00_score{'johtaja'} = 50;
+#$X00_score{'orkesterinjohtaja'} = 60; # Use johtaja
+
 
 our @X00_scorelist = sort { $X00_score{$b} <=> $X00_score{$a} } keys %X00_score;
 
@@ -512,9 +513,13 @@ sub score_author($$$) {
     my %author = %{$author_ref};
     if ( 1 || $is_classical_music || !$is_host ) {
 	for ( my $i=0; $i <= $#X00_scorelist; $i++ ) {
+
 	    my $curr_funk = $X00_scorelist[$i];
 	    if ( defined($author{$curr_funk}) ) {
-		return $X00_score{$curr_funk};
+
+		my $score = $X00_score{$curr_funk};
+		print STDERR "SCORE: ", $author{name}, "/$curr_funk=$score\n";
+		return $score;
 	    }
 	}
     }
@@ -550,7 +555,7 @@ sub get_best_author($$$) {
     my %authors = %{$authors_ref};
     # Unlike
 
-    my @auth_ids = sort keys %authors; # How about getting em in some priority order?
+    my @auth_ids = sort keys %authors; # TODO: How about getting em in some priority order?
 
     # If there's only one author in the record, make it 1XX:
     if ( $#auth_ids == 0 ) {
@@ -1002,12 +1007,13 @@ sub compare_two_authors($$$$$) {
     my %ruler = %{$authors{$ruler_id}};
     my %pretender = %{$authors{$pretender_id}};
 
-    if ( $debug ) {
-	print STDERR "COMPARE ", $ruler{'name'}, " vs ", $pretender{'name'}, "\n";
-    }
+
     my $rulers_score = $ruler{score}; # score_author(\%ruler, $is_classical_music, $is_host);
     my $pretenders_score = $pretender{score}; # score_author(\%pretender, $is_classical_music, $is_host);
-
+    
+    if ( $debug ) {
+	print STDERR "COMPARE ", $ruler{'name'}, " ($rulers_score) vs ", $pretender{'name'}, " ($pretenders_score)\n";
+    }
     
 #    foreach my $key ( sort keys %ruler ) {
 #	print STDERR "RULER: $key => ", $ruler{$key}, "\n";
@@ -1110,6 +1116,7 @@ sub process_tempo_authors($$$$$) {
     my $max = 0;
     my %seen;
     foreach my $auth_id ( sort keys %authors ) {
+
 	my $score = score_author($authors{$auth_id}, $is_classical_music, $is_host);
 	$authors{$auth_id}->{score} = $score;
 	if ( $max < $score ) {
