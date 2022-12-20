@@ -3012,7 +3012,6 @@ for ( my $i=0; $i <= $#input_files; $i++ ) {
     }
     my @marc_objects = &process_tempo_file($filename);
 
-    my $target_directory = &output_dir_or_error_dir2target_dir(\@marc_objects, $filename, $output_directory, $error_directory);
 
     create_host_field_505(\@marc_objects);
 
@@ -3031,6 +3030,9 @@ for ( my $i=0; $i <= $#input_files; $i++ ) {
 	    print STDERR "DEBUG\tCONVERSION RESULT #$i:\n$output\n";
 	}
     }
+
+
+    my $target_directory = &output_dir_or_error_dir2target_dir(\@marc_objects, $filename, $output_directory, $error_directory);
     
     # Copy marc stuff 1st
     if ( $target_directory ) {
