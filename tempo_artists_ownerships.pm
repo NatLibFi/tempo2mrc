@@ -239,6 +239,26 @@ sub debug_remaining_keys {
     }
 }
 
+sub johtaja_hack($) {
+    my $author_ref = shift();
+
+    foreach my $key ( keys %{$author_ref} ) {
+	# Hacky: delete generic 'esittäjä' if we have more specific function:
+	# (T.M. did not want $e esittäjä, $e johtaja for Osmo Vänskä,
+	#  just $e johtaja)
+	# (In future this list may or may nor grow.)
+	if ( defined(${$author_ref}{$key}{'johtaja'}) ||
+	     defined(${$author_ref}{$key}{'laulaja'}) ) {
+	    delete ${$author_ref}{$key}{'esittäjä'}; 
+	}
+	# However, we don't want to use 'laulaja' so put the 'esittäjä' key
+	# back in:
+	if ( defined(${$author_ref}{$key}{'laulaja'}) ) {
+	    delete ${$author_ref}{$key}{'laulaja'};
+	    ${$author_ref}{$key}{'esittäjä'} = 'laulaja';
+	}
+    }
+}
 
 sub get_tempo_authors($$$) {
     my ( $head, $arr_ref, $marc_record_ref ) = @_;
@@ -430,6 +450,8 @@ sub get_tempo_authors($$$) {
 
     remove_non_authors(\%authors, $marc_record_ref);
 
+    johtaja_hack(\%authors);
+    
     return %authors;
 }
 
@@ -439,19 +461,6 @@ sub get_functions($) {
     my %author = %{$author_ref};
 
     my @e_array = ();
-    # Hacky: delete generic 'esittäjä' if we have more specific function:
-    # (T.M. did not want $e esittäjä, $e johtaja for Osmo Vänskä,
-    #  just $e johtaja)
-    # (In future this list may or may nor grow.)
-    if ( defined($author{'johtaja'}) ||
-	 defined($author{'laulaja'}) ) {
-	delete $author{'esittäjä'};
-    }
-    # However, we don't want to use 'laulaja' so put the 'esittäjä' key back in
-    if ( defined($author{'laulaja'}) ) {
-    	delete $author{'laulaja'};
-	$author{'esittäjä'} = 'laulaja';
-    }
     
     # Go thru X00$e fields from best to worst. Add hits.
     # This way the top-priority function comes first.
