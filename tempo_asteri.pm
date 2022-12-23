@@ -106,7 +106,7 @@ sub read_minified_fin11() {
     # Read minified FIN11 authority data:
     if ( $localhost =~ /ehistoria-kk/ ) {
 	if ( ! -e $fin11_file ) {
-	    die();
+	    die("Asteri data '$fin11_file' not found");
 	}
     }
     else {
