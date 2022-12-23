@@ -742,7 +742,9 @@ sub tempo_author2asteri_record($$) {
     }
     print STDERR "Multiple candidates remains. Skip.\n";
     foreach my $record ( @{$cand_records_ref}) {
-	print STDERR $record->toString();
+	my $tmp = $record->toString();
+	$tmp =~ s/^/  /gm;
+	print STDERR $tmp;
     }
     return undef;
 }
