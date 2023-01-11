@@ -982,7 +982,7 @@ sub tempo_author_to_marc_field($$$) {
 		}
 	    }
 
-	    $content = "0 \x1Fa$name";
+	    $content = "2 \x1Fa$name";
 	}
 	else {
 	    # Not using Asteri record:
