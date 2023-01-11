@@ -180,7 +180,7 @@ sub remove_term($$$$) {
     my @contents = marc21_record_get_fields($record, $tag, undef);
     for ( my $i=$#contents; $i >= 0; $i-- ) {
         my $content = $contents[$i];
-        if ( field_has_term($content, $term, $lexicon ) ) {
+        if ( field_content_has_term($content, $term, $lexicon ) ) {
             if ( $content =~ /^..\x1Fa\Q$term\E\x1F2/ ) {
                 # pois
                 print STDERR "$id\tDELETE $tag FIELD '$content'\n";
@@ -1198,6 +1198,9 @@ sub read_yso() {
 		    }
                     if ( $pref_label =~ /^\"(.*)\"\@fi$/ ) {
                         my $keyword = $1;
+			if ( 0 && $keyword =~ /n( kieli|kielinen kirjallisuus)$/ && $keyword !~ /^(kirjallisuuden|luonnollinen) kieli/ ) {
+			    print STDERR "MELINDA-7994\t$keyword\t$yso_id\n";
+			}
                         if ( !defined($yso_id2ysofin_pref_label{$yso_id}) ) {
                             $yso_id2ysofin_pref_label{$yso_id} = $keyword;
 			    if ( $breakpoint ) {
@@ -2935,15 +2938,7 @@ sub uppercase_initials($) {
     return $word;
 }
 
-sub local_lc($) {
-    my $word = shift();
-    # meidän perlin versio ei välttämättä klaaraa utf-8-merkkejä:
-    $word = lc($word);
-    $word =~ s/Å/å/g;
-    $word =~ s/Ä/ä/g;
-    $word =~ s/Ö/ö/g;
-    return $word;
-}
+
 
 sub term_get_cands($); # proto needed because of recursion
 sub term_get_cands($) {
@@ -2978,7 +2973,7 @@ sub term_get_cands($) {
 
 
     # kokonaan pienellä kirjoitettu versio:
-    my $lowercased_word = local_lc($word);
+    my $lowercased_word = nvolk_lc($word);
     if ( $lowercased_word ne $word ) {
         $cands[$#cands+1] = $lowercased_word;
     }
@@ -3305,19 +3300,23 @@ sub generic_yes_no_fixer($$$$$$$$) {
 }
 
 
-sub field_has_term($$$) {
-    my ( $content, $term, $lexicon ) = @_;
+sub field_content_has_term($$$) {
+    my ( $content, $term_regexp, $lexicon ) = @_;
 
-    if ( $lexicon eq 'LCSH' ) {
-        if ( $content !~ /^.0/ ) {
-            return undef;
-        }
+    # Check lexicon:
+    if ( defined($lexicon) ) {
+	# Some long forgotten indicator sanity check:
+	if ( $lexicon eq 'LCSH' ) {
+	    if ( $content !~ /^.0/ ) {
+		return undef;
+	    }
+	}
+	if ( $content !~ /\x1F2\Q$lexicon\E/ ) {
+	    return undef;
+	}
     }
-    elsif ( $content !~ /\x1F2\Q$lexicon\E/ ) {
-        return undef;
-    }
-
-    if ( $content =~ /\x1F[ax]($term)($|\x1F)/ ) {
+    
+    if ( $content =~ /\x1F[ax]($term_regexp)($|\x1F)/ ) {
         return $1;
     }
 
@@ -3326,12 +3325,12 @@ sub field_has_term($$$) {
 
 
 
-sub has_term($$$$) {
+sub record_has_term($$$$) {
     my ( $id, $record, $term, $lexicon ) = @_;
     my @contents = marc21_record_get_fields($record, '650', undef);
 
     for ( my $i=0; $i <= $#contents; $i++ ) {
-        my $content = field_has_term($contents[$i], $term, $lexicon);
+        my $content = field_content_has_term($contents[$i], $term, $lexicon);
         if ( defined($content) ) {
             return $content;
         }
@@ -3366,7 +3365,7 @@ sub add_missing_term($$$$) {
     my @contents = marc21_record_get_fields($record, $tag, undef);
 
     for ( my $i=0; $i <= $#contents; $i++ ) {
-        my $content = field_has_term($contents[$i], $term, $lexicon);
+        my $content = field_content_has_term($contents[$i], $term, $lexicon);
         if ( defined($content) ) {
             return $record;
         }
