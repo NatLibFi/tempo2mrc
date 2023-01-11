@@ -108,7 +108,7 @@ sub marc21_directory2tag_len_pos($) {
       push(@pos, $p);
     }
     else {
-      die("oops2 '$directory'\n");
+      die("critical error: directory: '$directory'\n");
     }
   }
   return (\@tag, \@len, \@pos );
@@ -614,68 +614,6 @@ sub marc21_to_sequential($$) {
 }
 
 
-sub marc21_debug_record($$) {
-  my ( $record, $id ) = @_;
-  my $str = '';
-
-  my ( $leader, $directory, $cfstr ) = marc21_record2leader_directory_fields($record);
-
-
-  my @directory_tags = marc21_directory2array($directory);
-  if ( $#directory_tags == -1 ) {
-    $str .= "$id: Corrupted directory (probably wrong size): '$directory'" . length($directory) . "\n";
-  }
-
-  my ( $cf2_ok, @fields2 ) = _ere_get_all_fields($record);
-  my @fields  = split(/\x1E/, $cfstr);
-
-  if ( $#directory_tags > $#fields ) {
-    $str .= "0: $directory_tags[0]\n";
-    $str .= "N: $directory_tags[$#directory_tags]\n";
-    $str .= "$record\n";
-    #die;
-  }
-  elsif ( $#directory_tags != $#fields ) {
-    $str .= "$id: directory does not contain all the tags: $#directory_tags+1 vs $#fields+1!\n";
-    $str .= "$record\n";
-  }
-
-
-  my ( $tag, $length, $starting_pos );
-  $starting_pos = 0;
-  my $i = 0;
-  
-  my $new_cfstr = "";
-  my $erestr = '';
-  #$str .= "## $id ##\n$record\n## $id ##\n";
-  $str .= "\n## $id ##\n";
-  $str .= "LDR\t'$leader'\n";
-
-  for ( $i = 0; $i <= $#directory_tags; $i++ ) {
-    $directory_tags[$i] =~ /^(...)(....)(.....)$/ or die("oops $i: '$directory_tags[$i]'");
-    my $tag = $1;
-    my $flen = $2;
-    my $start = $3;
-    # print STDERR "TAG $tag FLEN $flen START $start\t'$fields2[$i]'\n";
-    $flen =~ s/^0+//;
-    $start =~ s/^0+(\d)/$1/; # leave the final 0
-    #print STDERR "TAG $tag FLEN $flen START $start\n";
-    # 1) get the field contents
-    #my $field_data = ( $is_utf8 ? bytes::substr(Encode::encode_utf8($cfstr), $start, $flen) : substr($cfstr, $start, $flen));
-    my $field_data = bytes::substr($cfstr, $start, $flen); # ( $is_utf8 ? bytes::substr($cfstr, $start, $flen) : substr($cfstr, $start, $flen));
-    #my $field_data = length($cfstr, $start, $flen); # ( $is_utf8 ? bytes::substr($cfstr, $start, $flen) : substr($cfstr, $start, $flen));
-
-    my $dt = $directory_tags[$i];
-    $dt =~ s/^(\d{3}|CAT|COR|DEL|FMT|LID|LKR|LOW|OWN|SID|TPL)(\d{4})(\d{5})/$1 $2 $3/;
-    $str .= "#$i\t$dt\t'$field_data' ($flen)\n";
-    if ( $debug ) {
-      $erestr .= "$directory_tags[$i] $fields2[$i]\n";
-    }
-  }
-  $str .= $erestr;
-  return $str;
-}
-
 sub marc21_field2string($) {
     # Convert to more human-readable form
     my $field = shift();
@@ -965,8 +903,8 @@ sub marc21_record_add_field_after($$$$) {
 
     #print STDERR marc21_debug_record($original_record, "ORIGINAL RECORD");
     #print STDERR "\n\n";
-    print STDERR marc21_debug_record($new_record, "NEW RECORD");
-    print STDERR "\n\n";
+    #print STDERR marc21_debug_record($new_record, "NEW RECORD");
+    #print STDERR "\n\n";
 
     die("DOOM");
   }
@@ -1241,8 +1179,6 @@ sub string_replace($$$) {
 
 
 sub unicode_strip_diacritics($) {
-    die();
-    # Deprecated. Use remove_diacritics from nvolk_utf8.pm
   my $str = $_[0];
 
   $str =~ s/́//g;
@@ -1995,114 +1931,6 @@ sub marc21_record_has_field_at($$$$) {
   return -1;
 }
 
-sub marc21_record_remove_content($$$$) {
-  my ( $tietue, $kentta, $osakentta, $arvo ) = @_;
-  my @kentat = marc21_record_get_fields($tietue, $kentta, undef);
-
-  if ( $#kentat < 0 ) {
-    return 0;
-  }
-
-  if ( !defined($osakentta) ) {
-    for ( my $i=$#kentat; $i>=0; $i-- ) {
-      if ( $kentat[$i] eq $arvo ) {
-	$tietue = marc21_record_remove_nth_field($tietue, $kentta, undef, $i);
-      }
-    }
-    return $tietue;
-  }
-
-  die("Not implemented yet");
-  return $tietue;
-}
-
-sub marc21_record_copy_missing_field($$$) {
-  my ( $from, $to, $tag ) = @_;
-
-  my @to_fields = marc21_record_get_fields($to, $tag, undef);
-
-  if ( $#to_fields >= 0 ) {
-    print STDERR "Target already has field '$tag'\n";
-    return $to;
-  }
-
-  my @from_fields = marc21_record_get_fields($from, $tag, undef);
-
-  if ( $#from_fields < 0 ) { return $to; }
-
-  if ( $#from_fields > 0 ) {
-    print STDERR "Multiple copyable $tag fields. Copying first ('$from_fields[0]).\n";
-  }
-  $to = &marc21_record_add_field($to, $tag, $from_fields[0]);
-
-  return $to;
-}
-
-# Common field tricks:
-sub rda040($$) {
-  my $record = shift();
-  my $debug = shift();
-  my $f040old = &marc21_record_get_field($record, '040', '');
-  my $f040rda = "  \x1FaFI-NL\x1Fbfin\x1Ferda";
-  if ( $f040old ) {
-    if ( $f040old =~ /^(  \x1FaFI-NL)$/ ) {
-      $record = &marc21_record_replace_field($record, '040', $f040rda);
-    }
-    else {
-      die($f040old);
-    }
-  }
-  else {
-    $record = &marc21_record_add_field($record, '040', $f040rda);
-  }
-  return $record;
-}
-
-sub normalize_content($$) {
-  my ( $tag, $val ) = @_;
-  if ( $tag =~ /^[167](00|10|11)$/ ) {
-    $val =~ s/(\x1F[abcd][^\x1F]+),$/$1./;
-    $val =~ s/(\x1Fa[^\x1F]+)\.\.$/$1./;
-  }
-  return $val;
-}
-
-sub pair_field($$$$) {
-  my ( $from_field, $to_field, $tag, $sfc ) = @_;
-  # poista lähteen ja vastaavat kohteen speksatut kentät:
-  while ( $sfc =~ s/^([a-z0-9])// ) {
-    my $key = $1;
-    if ( $from_field =~ s/(\x1F$key[^\x1F]+)// ) {
-      my $val1 = $1;
-      if ( $to_field =~ s/(\x1F$key[^\x1F]+)// ) {
-	my $val2 = $1;
-	$val1 = &normalize_content($tag, $val1);
-	$val2 = &normalize_content($tag, $val2);
-	if ( $val1 ne $val2) {
-	  return 0;
-	}
-      }
-    }
-    elsif ( $to_field =~ s/(\x1F$key[^\x1F]+)// ) {
-      return 0;
-    }
-  }
-  # kohteen jokainen kenttä pitää löytyy lähteestä, muuten fail...
-  while ( $to_field =~ s/(\x1F[^\x1F]+)// ) {
-    my $val2 = $1;
-    if ( $from_field =~ s/(\x1F[^\x1F]+)// ) {
-      my $val1 = $1;
-      $val1 = &normalize_content($tag, $val1);
-      $val2 = &normalize_content($tag, $val2);
-      if ( $val1 ne $val2) {
-	return 0;
-      }
-    }
-  }
-  return 1;
-
-}
-
 
 sub mfhd_record2bib_id($) {
   my ( $mfhd_record ) = @_;
@@ -2259,37 +2087,6 @@ sub is_serial($) {
 }
 		  
 
-sub merge_033($) {
-  # Fono-konversio saattaa luoda useita yksittäisiä:
-  my $record = $_[0];
-  my @fields = marc21_record_get_fields($record, '033', '');
-  my $ind1is0 = 0;
-  my $ind2 = undef;
-  my @vals;
-  for ( my $i=0; $i <= $#fields; $i++ ) {
-    if ( $fields[$i] =~ /^0(.)\x1Fa([^\x1F]+)$/ ) {
-      $vals[$#vals+1] = $2;
-      $ind1is0++;
-      if ( !defined($ind2) ) {
-	$ind2 = $1;
-      }
-      elsif ( $1 ne $ind2 ) {
-	$ind2 = ' ';
-      }
-    }
-  }
-  if ( $ind1is0 > 1 ) {
-    for ( my $i=$#fields; $i >= 0; $i-- ) {
-      if ( $fields[$i] =~ /^0/ ) {
-	$record = marc21_record_remove_nth_field($record, '033', '', $i);
-      }
-    }
-    $record = marc21_record_add_field($record, '033', "1${ind2}\x1Fa".join("\x1Fa", @vals));
-  }
-  return $record;
-}
-
-
 sub is_isbn($) {
   my $issn = shift;
   if ( $issn =~ /^([0-9]\-?){9}[0-9X]$/ ) {
@@ -2318,7 +2115,7 @@ sub karsi_kentan_perusteella($$$$$$$) {
   my $n_tietueet = $#tietueet+1;
 
   my $prefix = ( $hyva_kentta ? "LACKING " : 'CONTAINING ' );
-  print STDERR "OPERATION: REMOVE RECORDS ${prefix}$kentta", ( defined($osakentta) ? "\$$osakentta" : '' ), " '$sisalto'\tN=", (1+$#tietueet), "\n";
+  print STDERR "OPERATION: REMOVE RECORDS ${prefix}$kentta", ( defined($osakentta) ? "\$$osakentta" : '' ), " '", (defined($sisalto) ? $sisalto : 'undef'), "'\tN=", (1+$#tietueet), "\n";
 
   my @pois;
   my $n_osuma = 0;
@@ -2332,7 +2129,10 @@ sub karsi_kentan_perusteella($$$$$$$) {
     my $j = 0;
     for ( $j=0; $j <= $#tietueen_kentat; $j++ ) {
       my $tietueen_kentta = $tietueen_kentat[$j];
-      if ( $tietueen_kentta eq $sisalto ) {
+      if ( !defined($sisalto) ) {
+	  $osumat++;
+      }
+      elsif ( $tietueen_kentta eq $sisalto ) {
 	$osumat++;
       }
     }
@@ -2369,7 +2169,7 @@ sub karsi_kentan_perusteella($$$$$$$) {
   }
 
   if ( $#tietueet == -1 ) {
-    print STDERR " NB! Poistettiin kaikki! ($sisalto)\n";
+    print STDERR " NB! Poistettiin kaikki!\n";
   }
   if ( $n_tietueet == $#tietueet + 1 ) {
     print STDERR "  Did not apply.\n";
@@ -2670,12 +2470,18 @@ sub get_773h_from_host_300($) {
     my $h = marc21_field_get_subfield($content, 'a');
     if ( !defined($h) ) { return ''; }
 
-    while ( $h =~ s/\([^\(\)]*\)// ) {} # recursive bracker removal "(23 sivua) )"
+    # Uh, we might want to keep /(daisy)/ and other info...
+    while ( $h !~ /\(daisy/i && $h =~ s/\([^\(\)]*\)// ) {} # recursive bracker removal "(23 sivua) )"
     $h =~ s/[ ,\.:;\+]*$//;
     if ( $h =~ s/(\S)\s*\([^\)]*\)$/$1/ ) { # loppusulut (kesto) pois.
 	$h =~ s/[ ,\.:;\+]*$//;
     }
     $h =~ s/ +(,)/$1/g; 
+
+    if ( $h =~ /^\[?\d+\]? (sivua|numeroimatonta sivua)$/ ) {
+	return '';
+    }
+    
     # Musiikinluettelointiohjeessa oli tommoinen, onkohan kuinka universaali:
     my $e = marc21_field_get_subfield($content, 'e');
     if ( $h && defined($e) ) {
@@ -2684,15 +2490,17 @@ sub get_773h_from_host_300($) {
 	if ( $e !~ /[\(\)\[\]]/ ) {
 	    $h .= " + $e";
 	}
+	$h =~ s/ +,/,/g;
 	$h =~ s/ +/ /g;
-	$h =~ s/ +(,| )/$1/g;
 	
     }
+    print STDERR "H300: '$h'\n";
     return $h;
 }
 
 sub get_773h_from_host_record_ref($) {
     my $host_record_ref = shift;
+    if ( !${$host_record_ref} ) { return undef; }
     my $h300 = ${$host_record_ref}->get_first_matching_field('300');
     if ( !defined($h300) ) { return undef; }
     return get_773h_from_host_300($h300->{content});
@@ -3040,96 +2848,6 @@ sub create773($$$) {
   return undef;
 }
 
-sub critical_sanity_checks($$) {
-  my ( $id, $record ) = @_;
-
-  $record =~ /^.........(.)/;
-  my $encoding = $1;
-
-  if ( $encoding ne 'a' ) {
-    print STDERR "$id\tLDR/09='$encoding'\ţNot Unicode\n";
-  }
-
-  if ( is_bib($record) ) {
-    my @f245 = marc21_record_get_fields($record, '245', undef);
-    if ( $#f245 != 0 ) {
-      print STDERR "$id\tVirheellinen määrä 245-kenttiä: ", ($#f245+1), "\n";
-    } elsif ( $f245[0] !~ /^..(\x1F[68][^\x1F]+)?\x1Fa/ ) {
-      print STDERR "$id\tOuto nimeke '", $f245[0], "'\n";
-    } elsif ( $f245[0] !~ /^[01][0-9]\x1F/ ) {
-      print STDERR "$id\t245 indikaattoriongelma '", $f245[0], "'\n";
-    }
-
-    my @f100 = marc21_record_get_fields($record, '100', undef);
-    my @f110 = marc21_record_get_fields($record, '110', undef);
-    
-    my @f260 = marc21_record_get_fields($record, '260', undef);
-    my @f264 = marc21_record_get_fields($record, '264', undef);
-    
-    if ( $#f100 + $#f110 + 2 > 1 ) {
-      print STDERR "$id\t100=", ($#f100+1), "\t110=", ($#f110+1), "\tYHT=", ( $#f100 + $#f110 + 2 ), "\n";
-    }
-    
-    my @require_a = ( '100', '110' );
-    for ( my $j=0; $j <= $#require_a; $j++ ) {
-      my $tag = $require_a[$j];
-      my @content = marc21_record_get_fields($record, $tag, undef);
-      for ( my $i=0; $i <= $#content; $i++ ) {
-	my $field = $content[$i];
-	if ( $field !~ /\x1Fa/ ) {
-	  print STDERR "$id\tKentästä $tag puuttuu osakenttä \$a: '$field'\n";
-	} elsif ( $field !~ /\x1Fa[^\x1F]/ ) {
-	  print STDERR "$id\tKentän $tag\$a:n arvo on outo: '$field'\n";
-	}
-      }
-    }
-
-    if ( $#f260 >= 0 && $#f264 >= 0 ) {
-      print STDERR "$id\tnähty sekä 260 että 264!\n";
-    }
-  }
-  elsif ( is_auth($record) ) {
-    my ( $leader, $directory, $cfstr ) = marc21_record2leader_directory_fields($record);
-    my ( $tags_ref, $contents_ref ) = marc21_dir_and_fields2arrays($directory, $cfstr);
-    my @tags = @$tags_ref;
-    my $seen_1XX = 0;
-    for ( my $i=0; $i <= $#tags; $i++ ) {
-      if ( $tags[$i] =~ /^1/ ) {
-	$seen_1XX++;
-      }
-    }
-    if ( $seen_1XX > 1 ) {
-      my $f001 = marc21_record_get_field($record, '001', undef);
-      print STDERR "AUTH-$id\tMultiple 1XX fields\n";
-    }
-  }
-  elsif ( is_holding($record) ) {
-
-  }
-  else {
-    die();
-  }
-
-  # Tarkista tarkistan, että kunkin kentän osakentät on speksattu kelvollisesti:
-  my @fields = split(/\x1E/, $record);
-  for ( my $i=0; $i <= $#fields; $i++ ) {
-    my $content = $fields[$i];
-    if ( $content =~ /^[^\x01-\x1C\x1F]+$/ ) {
-      #print STDERR "OK kiinteä\n";
-      # ok, kiinteämittainen
-    }
-    elsif ( $content =~ /^[^\x1F][^\x1F](\x1F[a-z0-9][^\x00-\x1F]*)+$/ ) {
-      #print STDERR "OK normo\n";
-      # Ok normikenttä
-    }
-    else {
-      print STDERR "$id\tOuto kenttä '$content'\n";
-      #print STDERR nvolk_marc212oai_marc($record);
-    }
-  }
-
-  return $record;
-}
 
 sub on_videopeli($$) {
   my ( $id, $record) = @_;
@@ -3174,31 +2892,6 @@ sub get_sid($$) {
 }
 
 
-sub marc21_field_uniq_subfields($) {
-    my $field = shift();
-
-    my @sf = split(/\x1F/, $field);
-    if ( $#sf > 0 ) {
-	my %seen;
-	my $new_val = $sf[0];
-	for ( my $i=1; $i <= $#sf; $i++ ) {
-	    my $curr_sf = $sf[$i];
-	    if ( !defined($seen{$curr_sf}) ) {
-		$seen{$curr_sf} = 1;
-		$new_val .= "\x1F".$curr_sf;
-	    }
-	    else {
-		print STDERR "NB! Omit 2nd instance of XXX\$$curr_sf\n";
-	    }
-	}
-	return $new_val;
-    }
-    return $field;
-}
-
-
-
-
 sub number_of_nonfiling_characters_in_given_language($$) {
     my ( $content, $lang ) = @_;
 
@@ -3228,6 +2921,49 @@ sub number_of_nonfiling_characters_in_given_language($$) {
     return 0;
 }
 
+sub nvolk_lc($) {
+    my $word = shift();
+    # meidän perlin versio ei välttämättä klaaraa utf-8-merkkejä:
+    $word = lc($word);
+    $word =~ s/Å/å/g;
+    $word =~ s/Ä/ä/g;
+    $word =~ s/Ö/ö/g;
+    return $word;
+}
+
+sub normalize_name($) {
+    my $word = shift;
+    $word = nvolk_lc($word);
+    # meidän perlin versio ei välttämättä klaaraa utf-8-merkkejä:
+    $word = "\u$word";
+    $word =~ s/(^| |\.)([a-z])/$1\u$2/g;
+    $word =~ s/(^| |\.)å/${1}Å/g;
+    $word =~ s/(^| |\.)ä/${1}Ä/g;
+    $word =~ s/(^| |\.)ö/${1}Ö/g;;
+    return $word;
+}
+
+sub unique_array {
+    my @array = @_;
+    my %seen;
+    print STDERR "unique array...\n";
+    return grep { !$seen{$_}++ } @array;
+}
+
+sub unique_array2 {
+    my @array = @_;
+
+    my @unique;
+    my %seen;
+
+    foreach my $value (@array) {
+	if ( !defined($seen{$value}) ) {
+	    $seen{$value} = 1;
+	    push @unique, $value;
+	}
+    }
+    return @unique;
+}
 
 1;
 
