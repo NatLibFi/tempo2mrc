@@ -400,16 +400,29 @@ sub get_tempo_authors($$$) {
 			my $val = $foo{$key};
 			# Handle (and delete):
 			if ( $key =~ /^instruments\[\d+\]+\/key$/ ) {
+			    # We try to use 'yhtye' here as an indicator
+			    # of non-humanness... Didn't work out as humans
+			    # can have it as well...
+			    # Remove this here and in
+			    # educated_guess_is_person($)??
 			    if ( $val eq 'yhtye' ) {
 				$authors{$id}{'yhtye'} = 1;
 			    }
-			    elsif ( $val eq 'johtaja' ) {
-				$authors{$id}{$val} = $val;
+			    elsif ( $val eq 'johtaja' || $val eq 'kuoronjohtaja' || $val eq 'orkesterinjohtaja' ) {
+				$authors{$id}{'johtaja'} = $val;
 			    }
 			    elsif ( $val eq 'ym' ) {
 				# ignorable shit
 			    }
 			    elsif ( $debug ) {
+# Can we use these for something?
+#				if ( !defined($authors{$id}{'instruments'}) ) {
+#				    $authors{$id}{'instruments'} = $val;
+#				}
+#				else {
+#				    $authors{$id}{'instruments'} .= "\t".$val;
+#				}
+
 				print STDERR "Warning: ignore instrument '$val' ($key)\n";
 			    }
 			    delete $foo{$key};
@@ -783,7 +796,7 @@ sub educated_guess_is_person($) {
 	return 1;
     }
 
-    # Matias Sassali had this defined...
+    # Matias Sassali had this defined, so we can not use this, can we...
     if ( 0 && defined($author{'yhtye'}) ) {
 	return 0;
     }
