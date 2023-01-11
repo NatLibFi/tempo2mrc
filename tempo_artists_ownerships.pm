@@ -54,7 +54,7 @@ my $sukunimen_loppu = "(?:$pikkukirjain(?:\-$iso_kirjain$pikkukirjain|\-$aatelis
 my $sukunimi_regexp = "$sukunimen_alku$sukunimen_loppu";
 my $etunimen_loppu = "(?:$pikkukirjain(?:\-$iso_kirjain$pikkukirjain)?)+";
 my $nimikirjain = "(?:$iso_kirjain|${iso_kirjain}[.]-$iso_kirjain|Ch|Sz|Th|Yu)";
-my $etunimi_regexp = "$iso_kirjain$etunimen_loppu";
+my $etunimi_regexp = "(?:$iso_kirjain$etunimen_loppu|Kari'm)";
 
 
 
@@ -66,7 +66,7 @@ my $rejectables = "(?:Anonyymi|Kansan(sävelmä|perinne|runo|laulu)|Kanteletar|K
 
 
 # We should really trust our auth records, and not use this legacy list:
-my $human_names = "2pac/66KES88/Aksim 2000/Centro 53/js15/JS16/Jussi 69/Jyrki 69/Kid1/Kurt 49/Melody Boy 2000/Mars 31 Heaven/M1tsQ/Sairas T/Steen1/T1tsQ/Vilunki 3000";
+my $human_names = "2pac/66KES88/Aksim 2000/Centro 53/js15/JS16/Jussi 69/Jyrki 69/Kid1/Kurt 49/Melody Boy 2000/Mars 31 Heaven/M1tsQ/Sairas T/Steen1/Tactic L/T1tsQ/Vilunki 3000";
 my @human_names = split("/", $human_names);
 my %human_names;
 foreach my $n ( @human_names ) { $human_names{$n} = 1; }
@@ -88,6 +88,7 @@ sub extract_pseudonym_from_full_name($) {
     # Pseudonym, identity included:
     if ( ${$full_name_ref} =~ s/ *\/pseud \/ \(= *([^\)]+)\) */ / ||
 	 ${$full_name_ref} =~ s/ \(pseud\) \(= *([^\)]+)\) */ / ) {
+
 	return $1;
     }
     
@@ -144,7 +145,8 @@ sub process_tempo_full_name($) {
     }
 			
     $name =~ s/  +/ /g;
-
+    $name =~ s/ +$//;
+    
     # '4th Line Horn Quartet (4th Line-käyrätorvikvartetti)' =>
     # '4th Line Horn Quartet' =>
     while ( $name =~ s/(\S) *(\([^=\)][^\)]+\)) *$/$1/ ) { 
@@ -801,10 +803,15 @@ sub educated_guess_is_person($) {
 	return 0;
     }
 
+
     
     my $name = $author{'name'};
 
-
+    if ( $name =~ / '$iso_kirjain$pikkukirjain+' / ) {
+	# Kutsumanimi
+	return 1;
+    }
+    
     if ( $name =~ /[0-9]/ ) {
 	if ( defined($human_names{$name}) ) {
 	    # NB! No need to list the ones with an authority record
@@ -825,8 +832,12 @@ sub educated_guess_is_person($) {
 	return 0;
     }
 
-    if ( $name =~ /('s |ensemble|kuoro|kvintett|orkester|yhtye)/i ||
-	 $name =~ /((^| )(and|band|duo|ja|of|orchestra|project|the|trio)($| ))/i ) {
+    if ( $name =~ /('s |choir|ensemble|kuoro|kvintett|orchester|orkester|yhtye)/i ||
+	 $name =~ /((^| )(and|band|duo|ja|och|of|orchestra|project|the|trio)($| ))/i ||
+	 # Too long to be noble 'von' particle:
+	 $name =~ / ($pikkukirjain{7,})$/ ||
+	 $name =~ /^(\S+ $pikkukirjain+)$/ || # "Suomen peli"
+	 $name =~ /^($iso_kirjain{3,})/ ) {
 	if ( $debug ) {
 	    print STDERR "Educated X00/X10 guess for '$name': band (reason: '$1')\n";
 	}
@@ -906,13 +917,44 @@ sub X00_ind1_and_subfield_a($) {
 	return "0 \x1Fa$name";
     }
     # Change IND1 and name from "Etunimi Sukunimi" => "Sukunimi, Etunimi".
-    if ( $name =~ s/^($etunimi_regexp(?: af| de| de la| le| ten| van| van de[mnr]?| von| von und zu)?) ($iso_kirjain$sukunimen_loppu)$/$2, $1/ ||
-	 $name =~ s/^((?:$etunimi_regexp|$nimikirjain\.)(?: $etunimi_regexp|$nimikirjain\.)*) ($sukunimi_regexp)$/$2, $1/ ) {
+    if ( $name =~ s/^($etunimi_regexp(?: $etunimi_regexp| $nimikirjain\.)?(?: af| de| de la| le| ten| van| van de[mnr]?| von| von und zu)?) ($iso_kirjain$sukunimen_loppu)$/$2, $1/ ||
+	 # $nimikirjain.$nimikirjain since "Eli Anne K.G Eira", FFS.
+	 # $nimikirjain\. since "Roy C Bennett"
+	 # P-K Keränen
+	 $name =~ s/^((?:$etunimi_regexp|$nimikirjain\.|JP|OP|P-K)(?: $etunimi_regexp| $nimikirjain\.?| $nimikirjain\.$nimikirjain| '$etunimi_regexp'| $nimikirjain\-$nimikirjain)*) ($sukunimi_regexp)$/$2, $1/ ) {
 	return "1 \x1Fa$name";
     }
 
-    # Fall back
-    return "0 \x1Fa$name";;
+    # Single name: default to forename
+    if ( $name !~ /\s/ ) {
+	if ( $name =~ /(heimo|la|lä|nen|salo|ström)$/ ) { die($name); }
+	return "1 \x1Fa$name";
+    }
+
+    if ( $name =~ /^$etunimi_regexp $iso_kirjain$/ ) {
+	# Jannika B etc
+	return "0 \x1Fa$name";
+    }
+    if ( $name =~ /^$etunimi_regexp $iso_kirjain\.?$/ ||
+	# Sorry hacks:
+	 $name =~ /^(Ramses II)$/ ) {
+	if ( !$robust && $name !~ /^(Joel L\.|Ramses II)$/ ) {
+	    die($name);
+	}
+	return "0 \x1Fa$name";
+    }
+
+    if ( $debug ) {
+	print STDERR "Unhandled name order: $name\n";
+    }
+    
+    if ( $name =~ s/^(.*) (\S+)/$2, $1/ && $debug ) {
+	print STDERR "Rotated: $name\n";
+    }
+
+
+    # Fallback
+    return "1 \x1Fa$name";
 }
 
 sub tempo_author_to_marc_field($$$) {
@@ -928,7 +970,7 @@ sub tempo_author_to_marc_field($$$) {
 	print STDERR "author ($name) => asteri: $n_cands cand(s) and ", ($#alt_cand_records+1), " alt cand(s) found.\n";
 	foreach my $cand_record ( @cand_records ) {
 	    my $id = $cand_record->get_first_matching_field('001');
-	    print STDERR "  ID: $id\n";
+	    print STDERR "  ID: ", $id->{content}, "\n";
 	}
     }
     #if ( $#cand_records > -1 ) { die(); } # test: found something
