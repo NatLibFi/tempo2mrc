@@ -253,7 +253,7 @@ sub debug_remaining_keys {
     # unhandled keys.
     if ( $debug ) {
 	my @keys = sort keys %remaining_keys;
-	if ( $#keys > -1 ) {
+	if ( scalar(@keys) > 0 ) {
 	    print STDERR "WARNING\tREMAINING KEYS FOR '$prefix':\n";
 	    foreach my $curr_key ( @keys ) {
 		my $val = $remaining_keys{$curr_key};
@@ -292,7 +292,7 @@ sub get_tempo_authors($$$) {
     # artists_master_ownerships[0] or vice versa?
     # Currently index (=position) is shared.
     my @prefixes = ( "/$head/artists_publishing_ownerships", "/$head/artists_master_ownerships" );
-    for ( my $i=0; $i <= $#prefixes; $i++ ) {
+    for ( my $i=0; $i < scalar(@prefixes); $i++ ) {
 	my $curr_prefix = $prefixes[$i];
 	my $index = 0;
 	my $index2 = ( $curr_prefix =~ /master/ ? 100 : 0 );
@@ -300,12 +300,12 @@ sub get_tempo_authors($$$) {
 	print STDERR "FOO: '$curr_prefix'\n";
 	while ( @data = extract_keys($curr_prefix."[$index]", $arr_ref) ) {
 	    print STDERR "BAR $curr_prefix\[$index]\n";
-	    if ( $#data > -1 ) {
+	    if ( scalar(@data) > 0 ) {
 		# remove key/ from start:
 		@data = map { substr($_, length($curr_prefix."[$index]")+1) } @data; 
 		# Store artist-specific data to %foo:
 		my %foo;
-		for ( my $j=0; $j <= $#data; $j++ ) {
+		for ( my $j=0; $j < scalar(@data); $j++ ) {
 		    if ( $data[$j] =~ /^(.*) = '(.*)'$/ ) {
 			$foo{$1} = $2;
 		    }
@@ -380,14 +380,14 @@ sub get_tempo_authors($$$) {
 				   'rights_type/type',
 				   'rights_type/updated_at' );
 
-		for ( my $j=0; $j <= $#deletables; $j++ ) {
+		for ( my $j=0; $j < scalar(@deletables); $j++ ) {
 		    my $curr_key = $deletables[$j];
 		    delete $foo{$curr_key};
 		}
 
 		# Handle, delete or complain about unused (undeleted) keys:
 		my @keys = sort keys %foo;
-		if ( $#keys > -1 ) {
+		if ( scalar(@keys) > 0 ) {
 		    foreach my $key ( @keys ) {
 			my $val = $foo{$key};
 			if ( $key eq 'additional_notes' ) {
@@ -501,10 +501,10 @@ sub get_functions($) {
     
     # Go thru X00$e fields from best to worst. Add hits.
     # This way the top-priority function comes first.
-    for ( my $i=0; $i <= $#X00e_scorelist; $i++ ) {
+    for ( my $i=0; $i < scalar(@X00e_scorelist); $i++ ) {
 	my $curr_funk = $X00e_scorelist[$i];
 	if ( defined($author{$curr_funk}) ) {
-	    $e_array[$#e_array+1] = $curr_funk;
+	    $e_array[scalar(@e_array)] = $curr_funk;
 	}
     }
     return @e_array;
@@ -565,7 +565,7 @@ sub score_author($$$) {
     my ( $author_ref, $is_classical_music, $is_host ) = @_;
     my %author = %{$author_ref};
     if ( 1 || $is_classical_music || !$is_host ) {
-	for ( my $i=0; $i <= $#X00_scorelist; $i++ ) {
+	for ( my $i=0; $i < scalar(@X00_scorelist); $i++ ) {
 
 	    my $curr_funk = $X00_scorelist[$i];
 	    if ( defined($author{$curr_funk}) ) {
@@ -595,7 +595,7 @@ sub function2ids($$) {
     my @esittaja_auth_ids = ();
     foreach my $auth_id ( @all_auth_ids ) {
 	if ( defined($authors{$auth_id}->{$function}) ) {
-	    $esittaja_auth_ids[$#esittaja_auth_ids+1] = $auth_id;
+	    $esittaja_auth_ids[scalar(@esittaja_auth_ids)] = $auth_id;
 	}
     }
 
@@ -612,7 +612,7 @@ sub get_best_author($$$) {
     my @auth_ids = sort { $authors{$b}{'index'} <=> $authors{$a}{'index'} } keys %authors; # TODO: How about getting 'em in some priority order?
 
     # If there's only one author in the record, make it 1XX:
-    if ( $#auth_ids == 0 ) {
+    if ( scalar(@auth_ids) == 1 ) {
 	return $auth_ids[0];
     }
 
@@ -632,7 +632,7 @@ sub get_best_author($$$) {
     # Comp: use first composer (or nothing):
     if ( !$is_host ) {
 	my @composer_ids = function2ids($authors_ref, 'säveltäjä');
-	if ( $#composer_ids > -1 ) {
+	if ( scalar(@composer_ids) > 0 ) {
 	    return $composer_ids[0];
 	}
 	return undef;
@@ -642,7 +642,7 @@ sub get_best_author($$$) {
     if ( $is_classical_music ) {
 	# TM: "Ohje on, että taidemusiikkiemossa 1XX:ään tulee ainoa pääesittäjä, jos julkaisun teoksilla ei ole yhtä yhteistä säveltäjää (tämä olisi kai ilmoitettu Tempo-emossakin)."	
 	my @composer_ids = function2ids($authors_ref, 'säveltäjä');
-	if ( $#composer_ids == 0 ) {
+	if ( scalar(@composer_ids) == 1 ) {
 	    return $composer_ids[0];
 	}
     }
@@ -653,7 +653,7 @@ sub get_best_author($$$) {
     my @performer_ids = function2ids($authors_ref, 'esittäjä');
 
     # If there's one performer use him/her/them:
-    if ( $#performer_ids == 0 ) {
+    if ( scalar(@performer_ids) == 1 ) {
 	return $performer_ids[0];
     }
     return undef;
@@ -723,10 +723,10 @@ sub tempo_author2asteri_record($$) {
 
     #read_minified_fin11(); }
  
-    if ( $#{$cand_records_ref} == -1 ) {
+    if ( scalar(@{$cand_records_ref}) == 0 ) {
 	return undef;
     }
-    if ( $#{$cand_records_ref} == 0 ) {
+    if ( scalar(@{$cand_records_ref}) == 1 ) {
 	# Can we be sure, that the match is correct?
 	# If Tempo person has no birth nor death year,
 	# We don't dare to use this for adding $0.
@@ -964,15 +964,15 @@ sub tempo_author_to_marc_field($$$) {
 
     my @cand_records = &name2auth_records($name);
     my @alt_cand_records = &alt_name2auth_records($name);
-    my $n_cands = $#cand_records+1;
+    my $n_cands = scalar(@cand_records);
     if ( $debug ) {
-	print STDERR "author ($name) => asteri: $n_cands cand(s) and ", ($#alt_cand_records+1), " alt cand(s) found.\n";
+	print STDERR "author ($name) => asteri: $n_cands cand(s) and ", scalar(@alt_cand_records), " alt cand(s) found.\n";
 	foreach my $cand_record ( @cand_records ) {
 	    my $id = $cand_record->get_first_matching_field('001');
 	    print STDERR "  ID: ", $id->{content}, "\n";
 	}
     }
-    #if ( $#cand_records > -1 ) { die(); } # test: found something
+    #if ( scalar(@cand_records) > 0 ) { die(); } # test: found something
 
 
     if ( $name =~ /ja\/tai/ ) { die(); } # Fono crap. Sanity check: do we see this also in Tempo...
@@ -987,11 +987,11 @@ sub tempo_author_to_marc_field($$$) {
 	@alt_cand_records = remove_birth_and_death_mismatches($author_ref, \@alt_cand_records);
     }
 
-    if ( $n_cands != $#cand_records+1 ) {
+    if ( $n_cands != scalar(@cand_records) ) {
 	if ( $debug ) {
-	    print STDERR "  after filtering", ($#cand_records+1), " cand(s) found.\n";
+	    print STDERR "  after filtering", scalar(@cand_records), " cand(s) found.\n";
 	}
-	$n_cands = $#cand_records+1;
+	$n_cands = scalar(@cand_records);
     }
 
     
@@ -999,7 +999,7 @@ sub tempo_author_to_marc_field($$$) {
     my $asteri_record = tempo_author2asteri_record($author_ref, \@cand_records);
 
 
-    my $records4tens_ref = ( $#cand_records > -1 ? \@cand_records : \@alt_cand_records);
+    my $records4tens_ref = ( scalar(@cand_records) > 0 ? \@cand_records : \@alt_cand_records);
     
     my $ten = get_tens($author_ref, $asteri_record, $records4tens_ref);
 
@@ -1054,7 +1054,7 @@ sub tempo_author_to_marc_field($$$) {
     
     
     my @authors_functions = get_functions(\%author);
-    if ( $#authors_functions > -1 ) {
+    if ( scalar(@authors_functions) > 0 ) {
 	my $authors_functionstr = join(",\x1Fe", @authors_functions);
 	$content .= ','; # NB! TODO "$d 1999-" -> omit ','
 	$content .= "\x1Fe".$authors_functionstr;
@@ -1111,7 +1111,7 @@ sub compare_two_authors($$$$$) {
 
 #    # NB! We might need to rethink this for non-classic hosts...
 #    if ( 1 || $is_classical_music || !$is_host ) {
-#	for ( my $i=0; $i <= $#X00_scorelist; $i++ ) {
+#	for ( my $i=0; $i < scalar(@X00_scorelist); $i++ ) {
 #	    my $curr_funk = $X00_scorelist[$i];
 #	    if ( defined($ruler{$curr_funk}) ) {
 #		if ( !defined($pretender{$curr_funk}) ) {
@@ -1143,7 +1143,7 @@ sub get_best_remaining_author($$$) {
     my %authors = %{$authors_ref};
     my @author_ids = sort { $authors{$a}{'index'} <=> $authors{$b}{'index'} } keys %authors;
     my $id = undef;
-    for ( my $i=0; $i <= $#author_ids; $i++ ) {
+    for ( my $i=0; $i < scalar(@author_ids); $i++ ) {
 	my $curr_id = $author_ids[$i];
 	if ( !defined($id) ) {
 	    $id = $curr_id;
@@ -1162,7 +1162,7 @@ sub sanity_check_functions($) {
     foreach my $id ( sort keys %{$authorsP} ) {
 	my $hits = 0;
 	my %author = ${$authorsP}{$id};
-	for ( my $i=0; $i <= $#X00e_scorelist && !$hits ; $i++ ) {
+	for ( my $i=0; $i < scalar(@X00e_scorelist) && !$hits ; $i++ ) {
 	    my $key = $X00e_scorelist[$i];
 	    if ( defined($author{$key}) ) {
 		die($key); # test
