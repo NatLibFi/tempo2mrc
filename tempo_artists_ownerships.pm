@@ -109,6 +109,27 @@ sub extract_pseudonym_from_full_name($) {
 }
 
 
+sub normalize_name($) {
+    my ( $name ) = @_;
+
+    # Pre- and decompose:
+    $name = unicode_fixes2($name, 1);
+    
+    # 3 "full_name": "Neville 'Noddy' Holder",
+    # 3 "full_name": "Kalervo 'Kassu' Halonen",
+    # 2 "full_name": "William 'Bill' Cook",
+    # 2 "full_name": "Ville 'Little Willie' Mehto",
+    # 2 "full_name": "Pasi 'Poju' Heinonen",
+    # 2 "full_name": "Kyösti 'Adi' Remes",
+    # 2 "full_name": "Ville 'Little Willie' Mehto" # NB! Two quoted names
+    # 1 "full_name": "Markus 'Marzi' Nyman",
+    # 1 "full_name": "Juha 'Jay' Kortehisto",
+    # 1 "full_name": "James 'Jimmy' Lea",
+    $name =~ s/ '($iso_kirjain$pikkukirjain+( $iso_kirjain$pikkukirjain+)?)' / "$1" /;
+
+    return $name;
+}
+
 sub process_tempo_full_name($) {
     my $name = shift;
     my $orig_name = $name;
@@ -157,8 +178,9 @@ sub process_tempo_full_name($) {
 	print STDERR "WARNING\tCheck '$name'\n";
     }
 
-    # Pre- and decompose:
-    $data{'name'} = unicode_fixes2($name, 1);
+    
+    $name = &normalize_name($name);
+    $data{'name'} = $name;
     
     if ( $debug && 0 ) {
 	foreach my $key ( sort keys %data ) {
@@ -807,7 +829,7 @@ sub educated_guess_is_person($) {
     
     my $name = $author{'name'};
 
-    if ( $name =~ / '$iso_kirjain$pikkukirjain+' / ) {
+    if ( $name =~ / "$iso_kirjain$pikkukirjain+( $iso_kirjain$pikkukirjain+)?" / ) {
 	# Kutsumanimi
 	return 1;
     }
