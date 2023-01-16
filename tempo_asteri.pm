@@ -337,5 +337,29 @@ sub get_name_variants($) {
 }
 
 
+sub asteri_record2content($) {
+    my ( $asteri_record ) = @_;
+    my $content = '';
+    my $sf0 = undef;
+    if ( defined($asteri_record) ) {
+	my $f1X0 = $asteri_record->get_first_matching_field('1.0');
+	if ( !defined($f1X0) ) { die(); }
+	# Do we dare to add $0 for bands based on just name? Risky...
+	if ( $f1X0->{tag} =~ /00$/ ) {
+	    if ( $f1X0->{content} =~ /^(..\x1Fa[^\x1F]+(?:\x1F[bcd][^\x1F]+)*)/ ) {
+		$content = $1;
+		$content =~ s/,$//;
+		if ( $f1X0->{content} =~ /\x1F0([^\x1F]+)/ ) {
+		    $sf0 = $1;
+		}
+	    }
+	    else {
+		die();
+	    }
+	}
+    }
+    return ( $content, $sf0 );
+}
+
 
 1;
