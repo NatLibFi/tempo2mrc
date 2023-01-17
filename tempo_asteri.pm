@@ -12,17 +12,17 @@ our %name2tarke; # Mamba => yhtye (vrt. "Mamba (yhtye)")
 our $fin11_read = 0;
 our $fin11_file = '/dev/shm/index/asteri/fin11_for_fono.seq';
 
-sub map_name2auth_record($$) {
-    my ( $name, $auth_record ) = @_;
+my $iso_kirjain =  "(?:[A-Z]|Á|Å|Ä|Ç|É|Md|Ø|Ó|Õ|Ö|Ø|Š|Ü|Ž)"; # Md. on mm. Bangladeshissä yleinen lyhenne M[ou]hammedille...
+#my $pikkukirjain =  Encode::encode('UTF-8', "[a-z]|a\-a|à|á|å|ä|æ|č|ç|ć|è|é|ë|ì|í|ï|ñ|ń|ò|ó|õ|ö|š|ù|ú|ü|ỳ|ý|ø|ß");
+my $pikkukirjain =  "(?:[a-z]|a\-a|à|á|â|å|ã|ä|æ|ă|ā|č|ç|ć|è|é|ê|ë|ě|ė|ȩ|ì|í|ï|î|ī|ł|ñ|ń|o-o|ò|ó|õ|ö|ô|š|ş|ð|ù|ú|ü|û|ū|ỳ|ý|ÿ|ž|ø|ß)";
 
-    &read_minified_fin11();
+sub get_name_string_variants($) {
+    my $name = shift;
+    my @cands = ( $name );
 
-    my $i;
-    my @stack = ( $name );
-    
     my $normalized_name = remove_diacritics($name);
     if ( $normalized_name ne $name ) {
-	$stack[$#stack+1] = $normalized_name;
+	$cands[$#cands+1] = $normalized_name;
     }
 
     if ( 0 ) { # This is not for Tempo, but for Melinda CAPITAL fixes
@@ -31,10 +31,25 @@ sub map_name2auth_record($$) {
 	$normalized_name =~ s/ä/Ä/g;
 	$normalized_name =~ s/ö/Ö/g;
 	if ( $normalized_name ne $name ) {
-	    $stack[$#stack+1] = $normalized_name;
+	    $cands[$#cands+1] = $normalized_name;
 	}
     }
-    
+
+    if ( 0 && scalar(@cands) > 1 ) {
+	print STDERR "Multiple name cand(s): ", join(" -- ", @cands), "\n";
+    }
+    return @cands;
+}
+
+sub map_name2auth_record($$) {
+    my ( $name, $auth_record ) = @_;
+
+    &read_minified_fin11();
+
+    my $i;
+
+    my @stack = &get_name_string_variants($name);
+        
     my $authstr = $auth_record->toString();
     foreach my $n ( @stack ) {
 	my $skip = 0;
@@ -55,12 +70,8 @@ sub map_alt_name2auth_record($$) {
     &read_minified_fin11();
 
     my $i;
-    my @stack = ( $name );
+    my @stack = get_name_string_variants($name);
     
-    my $normalized_name = remove_diacritics($name);
-    if ( $normalized_name ne $name ) {
-	$stack[$#stack+1] = $normalized_name;
-    }
 
     my $authstr = $auth_record->toString();
     foreach my $n ( @stack ) {
@@ -77,13 +88,35 @@ sub map_alt_name2auth_record($$) {
 }
 
 sub name2auth_records($) {
-    my ( $name ) = @_;
-
+    my ( $original_name ) = @_;
+    my $name = $original_name;
+    
     &read_minified_fin11();
 
     if ( defined($name2auth_records{$name}) ) {
 	return @{$name2auth_records{$name}};
     }
+
+    if ( $name =~ / "($iso_kirjain$pikkukirjain+)" / ) {
+	#my $tmp1 = $` . ' ' . $';
+	# Neville "Noddy" Holder => Noddy Holder
+	# Juha "Jay" Kortehisto => Jay Kortehisto
+	my $nicknameless_name = $` . ' ' . $';
+	my $nickname_surname = $1 . ' ' . $';
+
+	if ( defined($name2auth_records{$nickname_surname}) ) {
+	    return @{$name2auth_records{$nickname_surname}};
+	}
+
+	if ( defined($name2auth_records{$nicknameless_name}) ) {
+	    # James "Jimmy" Lea
+	    #die("$nicknameless_name");
+	    return @{$name2auth_records{$nicknameless_name}};
+	}	
+    }
+
+
+    
     return ();
 }
 
