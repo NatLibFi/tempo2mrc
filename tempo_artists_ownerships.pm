@@ -435,6 +435,7 @@ sub get_tempo_authors($$$) {
 			    elsif ( $val eq 'johtaja' || $val eq 'kuoronjohtaja' || $val eq 'orkesterinjohtaja' ) {
 				$authors{$id}{'johtaja'} = $val;
 			    }
+			    elsif ( $val =~ /johtaja/ ) { die($val); }
 			    elsif ( $val eq 'ym' ) {
 				# ignorable shit
 			    }
