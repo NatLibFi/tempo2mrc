@@ -2,7 +2,7 @@
 #
 # tempo2mrc.perl -- convert Yle's tempo files to Marc21
 #
-# Copyright (c) 2021-2022 HY (KK). All Rights Reserved.
+# Copyright (c) 2021-2023 HY (KK). All Rights Reserved.
 #
 # Author(s): Nicholas Volk <nicholas.volk@helsinki.fi>
 #
@@ -483,7 +483,7 @@ sub custom_id2f007($$$$) {
 	if ( !defined($custom_id2f007{$type}) ) { die("Can't handle '$customID'"); }
 	my $value = $custom_id2f007{$type};
 
-	# Regexp lists all already seen (=supported) kartuntasarjas:
+	# Every (already seen) kartuntasarja is listed (=spported) by the regexp
 	if ( $customID =~ /^(CD-|CDY-|\+LP-)/ ) {
 	    return $value;
 	}
@@ -723,8 +723,20 @@ sub custom_id2physical_description($$$$) { # 300$a basename
 
 sub extract_field_006($$$$) {
     my ( $marc_record_ref, $customID, $is_sacd, $tempo_record_id ) = @_;
+
     # As per TM 2022-08-19:
     if ( &tempo_is_electronic_resource($customID, $is_sacd) ) {
+	# MELINDA-8090:
+	# Sometimes we know that DIGI material comes from a CD.
+	# Thus we skip adding 006.
+	my $f007 = ${$marc_record_ref}->get_first_matching_field('007');
+	
+	if ( defined($f007) && $f007->{content} =~ /^s/ ) {
+	    # Don't add 006...
+	    return;
+	}
+
+	# Add field 006:
 	my $content = 'm|||||o||h||||||||';
 	add_marc_field($marc_record_ref, '006', $content);	
 	$field006{$tempo_record_id} = $content; # Cache me
@@ -734,17 +746,23 @@ sub extract_field_006($$$$) {
 sub extract_field_007($$$$$$$) {
     my ( $tempo_dataP, $marc_recordP, $tempo_record_id, $customID, $is_sacd, $tempo_title, $physical_description ) = @_;
     my $content = custom_id2f007($customID, $tempo_dataP, $is_sacd, $tempo_title);
+
+    # if ( defined($content) ) { print STDERR "Custom ID -based 007: $content\n"; }
     if ( !defined($content) ) {
 	# As said above SACD information is sometimes found.
 	if ( $is_sacd ) {
 	    $content = $default_CD;
+	    # if ( defined($content) ) { print STDERR "SACD -based 007: $content\n"; }
 	}
     }
 
+
     if ( defined($physical_description) ) {
 	my $content2 = &physical_description2007($physical_description);
+	# Override CustomID=DIGI-based value: 
 	if ( !defined($content) || $content eq $default007c ) {
 	    $content = $content2;
+	    #if ( defined($content) ) { print STDERR "Physical description based 007: $content\n"; }
 	}
 	elsif ( !defined($content2) || $content eq $content2 ) {
 	    # do nothing
@@ -2444,20 +2462,8 @@ sub process_tempo_data2($$$$) {
 
     #print STDERR "C: '$customID', SACD:$is_sacd\n";
 
-    # Field 006
-    if ( !defined($tempo_host_id) ) { # Host:
-	#if ( !defined($physical_description) ) { # Why we had this rule?
-	extract_field_006($marc_record_ref, $customID, $is_sacd, $tempo_record_id);
-	#}
-
-    }
-    # Comps will inherit/copy the value of 007 from host:
-    else {
-	if ( defined($field006{$tempo_host_id}) ) { # Comp:
-	    add_marc_field($marc_record_ref, '006', $field006{$tempo_host_id});
-	}
-    }
-
+    # NB! Handle 007 before 006, as 006 decision is no longer based on DIGI
+    # but 007.
     # Field 007
     if ( !defined($tempo_host_id) ) { # Host:
 	extract_field_007($tempo_data_ref, $marc_record_ref, $tempo_record_id, $customID, $is_sacd, $tempo_title, $physical_description);
@@ -2472,6 +2478,22 @@ sub process_tempo_data2($$$$) {
 	    die();
 	}
     }
+
+    
+    # Field 006
+    if ( !defined($tempo_host_id) ) { # Host:
+	#if ( !defined($physical_description) ) { # Why we had this rule?
+	extract_field_006($marc_record_ref, $customID, $is_sacd, $tempo_record_id);
+	#}
+
+    }
+    # Comps will inherit/copy the value of 007 from host:
+    else {
+	if ( defined($field006{$tempo_host_id}) ) { # Comp:
+	    add_marc_field($marc_record_ref, '006', $field006{$tempo_host_id});
+	}
+    }
+
 
     if ( !${$marc_record_ref}->get_first_matching_field('007') ) {
 	print STDERR "ERROR: Unable to determine the marc field 007 (comp, no host found)!\n";
