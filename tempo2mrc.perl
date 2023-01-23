@@ -2472,11 +2472,9 @@ sub process_tempo_data2($$$$) {
     
     # Field 006
     if ( !defined($tempo_host_id) ) { # Host:
-	#if ( !defined($physical_description) ) { # Why we had this rule?
-	extract_field_006($marc_record_ref, $customID, $is_sacd, $tempo_record_id);
-	#}
-
+	extract_field_006($marc_record_ref, $customID, $is_sacd, $tempo_record_id );
     }
+
     # Comps will inherit/copy the value of 007 from host:
     else {
 	if ( defined($field006{$tempo_host_id}) ) { # Comp:
