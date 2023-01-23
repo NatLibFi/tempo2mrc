@@ -2408,6 +2408,7 @@ sub process_tempo_data2($$$$) {
     my $artist_notes = get_single_entry("/$prefix/custom/artist_notes", $tempo_data_ref);
 
     if ( defined($artist_notes) && $artist_notes ) {
+	$artist_notes =~ s/(\((?:[^\) ]+, )?)laulu([,\)])/${1}lauluääni${2}/;
 	&description_cleanup(\$artist_notes);
     }
     
@@ -2639,8 +2640,10 @@ sub process_tempo_data2($$$$) {
 
 	my $tempo_album_ref = tempo_album_refs2tempo_album_ref(\@tempo_album_refs);
 
+	
+	
 	# Add 028 (and corresponding comps' 773$o) only if both $a and $b exist
-	# (As per TM's comments. Previously only 208$b was possible.)
+	# (As per TM's comments. Previously lone 028$b was possible.)
 	if ( defined($label) && defined($tempo_album_ref) ) {
 	    # NB! Theoretically Fono had some extra info that goes to 028$q.
 	    # Not currently handled in Tempo.
