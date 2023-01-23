@@ -275,6 +275,8 @@ my $jossakin = "(?:teoskohtaisesti )?(?:albumin |levyn )?(?:albumitasolla|esitte
 sub description_cleanup($) {
     my ( $description_ref ) = @_;
 
+    if ( !defined(${$description_ref}) ) { return; }
+    
     ${$description_ref} =~ s/^ +//gm;
     ${$description_ref} =~ s/ +$//gm;
     print STDERR "DC: '", ${$description_ref}, "'\n";
@@ -287,25 +289,19 @@ sub description_cleanup($) {
 }
 
 
-
-sub descriptions_array_cleanup($) {
-    my ( $descriptions_ref ) = @_;
-    for ( my $i = 0; $i <= $#{$descriptions_ref}; $i++ ) {
-	&description_cleanup(\${$descriptions_ref}[$i]);
-    }
-}
-
 sub is_sacd($) {
-    my ( $descriptions_ref ) = @_;
+    my ( $description_ref ) = @_;
 
-    #print STDERR "\nDESC1:\n", join("\n", @$descriptions_ref), "\n";
-    for ( my $i = 0; $i <= $#{$descriptions_ref}; $i++ ) {
-	if ( $descriptions_ref->[$i] =~ s/\. SACD\././ ||
-	     $descriptions_ref->[$i] =~ s/^SACD\.\s*// ) {
-	    #print STDERR "\nDESC2:\n", join("\n", @$descriptions_ref), "\n"; die();
-	    return 1;
-	}
+    if ( !defined(${$description_ref}) ) { 
+	return 0;
     }
+
+    if ( ${$description_ref} =~ s/\. SACD\././ ||
+	 ${$description_ref} =~ s/^SACD\.\s*// ) {
+	#print STDERR "\nDESC2:\n", join("\n", ${$description_ref}, "\n"; die();
+	return 1;
+    }
+
     return 0;
 }
 
@@ -645,22 +641,20 @@ sub description2additional_musicians($) {
 }
 
 
-sub descriptions2physical_description($) {
-    my ( $descriptions_ref ) = @_;
+sub description2physical_description($) {
+    my ( $description_ref ) = @_;
 
     my %etlist;
 
-    for ( my $i=0; $i <= $#{$descriptions_ref}; $i++ ) {
-	if ( ${$descriptions_ref}[$i] =~ s/ ?Alkup(?:\.|eräinen) formaatti:? (CD|KN|m4a)\.?$// ||
-	     ${$descriptions_ref}[$i] =~ s/ ?Alkup(?:\.|eräinen) formaatti:? (CD|KN|m4a)\. / / ) {
-	    my $physical_description = &map2physical_description($1);
-	    if ( defined($physical_description) ) {
-		$etlist{$physical_description} = 1;
-	    }
+    if ( ${$description_ref} =~ s/ ?Alkup(?:\.|eräinen) formaatti:? (CD|KN|m4a)\.?$// ||
+	 ${$description_ref} =~ s/ ?Alkup(?:\.|eräinen) formaatti:? (CD|KN|m4a)\. / / ) {
+	my $physical_description = &map2physical_description($1);
+	if ( defined($physical_description) ) {
+	    $etlist{$physical_description} = 1;
 	}
-	elsif ( ${$descriptions_ref}[$i] =~ /Alkup.*? formaatti: / ) {
-	    die(${$descriptions_ref}[$i]);
-	}
+    }
+    elsif ( ${$description_ref} =~ /Alkup.*? formaatti: / ) {
+	die(${$description_ref});
     }
 
     my @cands = keys %etlist;
@@ -690,7 +684,7 @@ sub custom_id2physical_description($$$$) { # 300$a basename
 	$hits{'CD-äänilevy'} = 1;
     }
 
-    #my $extent_type_as_per_descriptions = &descriptions2physical_description($descriptions_ref);
+    #my $extent_type_as_per_descriptions = &descriptions2physical_description($description_ref);
     
     if ( defined($physical_description) ) {
 	$hits{$physical_description} = 1;	
@@ -968,8 +962,8 @@ sub normalize_instrument($) {
     return $instrument;
 }
 
-sub process_performer_note($$$$$$) {
-    my ( $prefix, $tempo_dataP, $marc_record_ref, $descriptions_array_ref, $additional_musicians, $field_511_content_ref ) = @_;
+sub process_performer_note($$$$$) {
+    my ( $prefix, $tempo_dataP, $marc_record_ref, $additional_musicians, $field_511_content_ref ) = @_;
     my $prefix2 = "/$prefix/artists_master_ownerships";
     my @results = grep { index($_, $prefix2) == 0 } @{$tempo_dataP}; # non-desctructive
 
@@ -1715,9 +1709,11 @@ sub add_subfield_300e($) {
     }
 }
 
-sub process_descriptions2language_notes($$$) {
-    my ( $descriptions_ref, $marc_recordP, $is_host ) = @_;
+sub process_description2language_notes($$$) {
+    my ( $description_ref, $marc_record_ref, $is_host ) = @_;
 
+    if ( !defined(${$description_ref}) ) { return; }
+    
     if ( !$is_host ) { return; }
     
     my $n_hits = 0;
@@ -1747,116 +1743,109 @@ sub process_descriptions2language_notes($$$) {
     #
     # If one of the above, we add $e 1 tekstiliite (and *never* two).
     # All related language info is stored in 040$g.
-    for ( my $i=0; $i <= $#{$descriptions_ref}; $i++ ) {
 
-	# typo fixes:
-	$descriptions_ref->[$i] =~ s/sittelylehtien /sittelylehtinen /;
-	$descriptions_ref->[$i] = trim_all($descriptions_ref->[$i]);
+    # typo fixes:
+    ${$description_ref} =~ s/sittelylehtien /sittelylehtinen /;
+    ${$description_ref} = trim_all(${$description_ref});
 	
-	my $add_300e = 0;
-	print STDERR "TEST: '", $descriptions_ref->[$i], "'\n";
-	while ( $descriptions_ref->[$i] =~ s/(?:^| )($esittelylehtinen(?: (?:[a-z]|ä)+ksi,)*(?: (?:[a-z]|ä)+ksi ja)? (?:[a-z]|ä)+ksi)(?:\.?$|\. )/ / ) {
-	    my $text = $1.'.';
-	    print STDERR "TEST PASS...\n";
-	    $descriptions_ref->[$i] = trim_all($descriptions_ref->[$i]);
-	    $n_hits++;
-
-	    my $content = "  \x1Fa".$text;
-	    add_marc_field($marc_recordP, '546', $content);
-	    # What's the difference between 'esittelylehtinen' and
-	    # 'tekstilehtinen'
-	    if ( $text =~ /(esittelylehtinen|libretto|tekstilehtinen)/i ) {
-		$add_300e = 1;
-		add_languages_to_041g($marc_recordP, $text);
-	    }
-	}
-	print STDERR "TEST2: '", $descriptions_ref->[$i], "'\n";
+    my $add_300e = 0;
+    print STDERR "TEST: '", ${$description_ref}, "'\n";
+    while ( ${$description_ref} =~ s/(?:^| )($esittelylehtinen(?: (?:[a-z]|ä)+ksi,)*(?: (?:[a-z]|ä)+ksi ja)? (?:[a-z]|ä)+ksi)(?:\.?$|\. )/ / ) {
+	my $text = $1.'.';
+	print STDERR "TEST PASS...\n";
+	${$description_ref} = trim_all(${$description_ref});
+	$n_hits++;
 	
-	if ( $descriptions_ref->[$i] =~ s/^$esittelylehtinen( esityskielellä)?\.$//i ) {
+	my $content = "  \x1Fa".$text;
+	add_marc_field($marc_record_ref, '546', $content);
+	# What's the difference between 'esittelylehtinen' and
+	# 'tekstilehtinen'
+	if ( $text =~ /(esittelylehtinen|libretto|tekstilehtinen)/i ) {
 	    $add_300e = 1;
+	    add_languages_to_041g($marc_record_ref, $text);
 	}
-	
-	# Try to detect if we missed something:
-	if ( $descriptions_ref->[$i] =~ /$esittelylehtinen/i ) {
-	     #$descriptions_ref->[$i] =~ /\s/ &&
-	     #$descriptions_ref->[$i] =~ /(?:esittelylehti|tekstilehti)/i ) {
-	    print STDERR "WARNING\t'", $descriptions_ref->[$i], "'\n";
-	    die();
-	}
-
-	if ( $add_300e ) { # move to a separate_function
-	    add_subfield_300e($marc_recordP);
-	}
-	# elsif ( !$robust ) { die(); }
-
-
     }
+    print STDERR "TEST2: '", ${$description_ref}, "'\n";
+	
+    if ( ${$description_ref} =~ s/^$esittelylehtinen( esityskielellä)?\.$//i ) {
+	$add_300e = 1;
+    }
+	
+    # Try to detect if we missed something:
+    if ( ${$description_ref} =~ /$esittelylehtinen/i ) {
+	#${$description_ref} =~ /\s/ &&
+	#${$description_ref} =~ /(?:esittelylehti|tekstilehti)/i ) {
+	print STDERR "WARNING\t'", ${$description_ref}, "'\n";
+	die();
+    }
+    
+    if ( $add_300e ) { # move to a separate_function
+	add_subfield_300e($marc_record_ref);
+    }
+
 }
 
 
 
-sub process_descriptions($$$$$) {
-    my ( $is_host, $prefix, $tempo_dataP, $marc_recordP, $descriptions_ref, $field_511_content_ref) = @_;
+sub process_description($$$$$) {
+    my ( $is_host, $prefix, $tempo_dataP, $marc_recordP, $description_ref, $field_511_content_ref) = @_;
 
-    for ( my $i=0; $i <= $#{$descriptions_ref}; $i++ ) {
-	my $curr_description = $descriptions_ref->[$i];
-	my @desc2 = split(/  +/, $curr_description);
-	if ( $#desc2 > 0 ) {
-	    die();
+    if ( !defined(${$description_ref}) ) { return; }
+    
+    my $curr_description = ${$description_ref};
+    my @desc2 = split(/  +/, $curr_description);
+    if ( $#desc2 > 0 ) {
+	die();
+    }
+    for ( my $j=0; $j <= $#desc2; $j++ ) {
+	my $mess = $desc2[$j];
+	&description_cleanup(\$mess);
+	
+	if ( $mess =~ /lueteltu/ ) {
+	    print STDERR "DEBUG\tProcess 511 description\t'$mess'\n";
+	    if ( !$robust ) {
+		die();
+	    }
 	}
-	for ( my $j=0; $j <= $#desc2; $j++ ) {
-    	    my $mess = $desc2[$j];
-	    &description_cleanup(\$mess);
-	    
-	    if ( $mess =~ /lueteltu/ ) {
-		print STDERR "DEBUG\tProcess 511 description\t'$mess'\n";
-		if ( !$robust ) {
-		    die();
+	elsif ( $mess =~ /\S/ ) {
+	    $mess = trim_all($mess);
+	    #if ( $is_host && $mess =~ /(^|\. )(Esittelylehtinen|Tekstilehtinen) / ) {
+	    if ( $mess =~ /(^|\. )(Esittelylehtinen|Tekstilehtinen) / ) {
+		if ( $is_host ) {
+		    # Something to field 300 as well?
+		    add_marc_field($marc_recordP, '500', "  \x1Fa$mess");
 		}
 	    }
-	    elsif ( $mess =~ /\S/ ) {
-		$mess = trim_all($mess);
-		#if ( $is_host && $mess =~ /(^|\. )(Esittelylehtinen|Tekstilehtinen) / ) {
-		if ( $mess =~ /(^|\. )(Esittelylehtinen|Tekstilehtinen) / ) {
-		    if ( $is_host ) {
-			# Something to field 300 as well?
-			add_marc_field($marc_recordP, '500', "  \x1Fa$mess");
-		    }
+	    elsif ( $is_host ) {
+		# Apparently KS wanted this Sekä: restriction back in
+		# 2016-02-22
+		$mess =~ s/([^\.])$/$1./;
+		if ( $debug ) {
+		    print STDERR "descriptions => 511\n";
 		}
-		elsif ( $is_host ) {
-		    # Apparently KS wanted this Sekä: restriction back in
-		    # 2016-02-22
-		    $mess =~ s/([^\.])$/$1./;
-		    if ( $debug ) {
-			print STDERR "descriptions => 511\n";
-		    }
-
-
-
 		    
-		    if ( !${$field_511_content_ref} ) {
+		if ( !${$field_511_content_ref} ) {
+		    ${$field_511_content_ref} = "0 \x1Fa$mess";
+		}
+		elsif ( ${$field_511_content_ref} =~ /\x1Fa([^\x1F]+)\.$/ ) {
+		    my $a = $1;
+		    if ( index($mess, $a) == 0 ) {
+			# "Ville Laihala" vs "Ville Laihala ja Saattajat": latter wins
 			${$field_511_content_ref} = "0 \x1Fa$mess";
 		    }
-		    elsif ( ${$field_511_content_ref} =~ /\x1Fa([^\x1F]+)\.$/ ) {
-			    my $a = $1;
-			    if ( index($mess, $a) == 0 ) {
-				# "Ville Laihala" vs "Ville Laihala ja Saattajat": latter wins
-				${$field_511_content_ref} = "0 \x1Fa$mess";
-			    }
-			    else {
-				print STDERR "MULTI-511 #2. Mergable?\n  '", ${$field_511_content_ref}, "'\n  '0 \x1Fa$mess\n";
-				add_marc_field($marc_recordP, '511', "0 \x1Fa$mess"); # Store this as well
-			    }
-
-		    }
 		    else {
-			die();
+			print STDERR "MULTI-511 #2. Mergable?\n  '", ${$field_511_content_ref}, "'\n  '0 \x1Fa$mess\n";
+			add_marc_field($marc_recordP, '511', "0 \x1Fa$mess"); # Store this as well
 		    }
-			    
+		    
 		}
-		elsif ( $mess ) {
-		    print STDERR "TODO or SKIP\tProcess description\t'$mess'\n";
+		else {
+		    die();
 		}
+		
+	    }
+	    elsif ( $mess ) {
+		print STDERR "TODO or SKIP\tProcess description\t'$mess'\n";
 	    }
 	}
     }
@@ -2366,7 +2355,7 @@ sub process_tempo_data2($$$$) {
     
     my $is_classical_music = &is_classical_music($tempo_data_ref, $prefix);
     my $field_511_content = '';
-
+    
     if ( 1 ) {
 	my $n = $#{$tempo_data_ref} +1;
 	remove_noise_from_tempo($prefix, $tempo_data_ref);
@@ -2375,7 +2364,7 @@ sub process_tempo_data2($$$$) {
 	    print STDERR "remove_noise_from_tempo() cleaned ", ($n-$n2), " row(s).\n";
 	    #print STDERR join("\n", @tempo_data), "\n";
 	}
-
+	
     }
     #print STDERR "REMAINING LEAF DATA AFTER PREPROCESSING:\n PREPRO\t", join("\n PREPRO\t", @tempo_data), "\n";
 
@@ -2388,35 +2377,36 @@ sub process_tempo_data2($$$$) {
     # HOST has like "TITLE (2CD)"
     my $media_as_per_title = ( !$is_host || !defined($tempo_title) ? undef : &extract_media_from_title(\$tempo_title, $max_disc_number));
 
+
+    my $description = undef;
+    if ( 1 ) {
+	my @descriptions = get_array_entry("/$prefix/descriptions", $tempo_data_ref);
+	# Sadly descriptions is defined as an array, even though it always contains but one line... Should we simplify code, by making it variable...
+	if ( scalar(@descriptions) > 1 ) { die(); }
+	$description = $descriptions[0];
+    }
     
-    my @descriptions = get_array_entry("/$prefix/descriptions", $tempo_data_ref);
-    
-    
-    # Sadly descriptions is defined as an array, even though it always contains but one line... Should we simplify code, by making it variable...
-    if ( $#descriptions > 0 ) { die(); }
+    &description_cleanup(\$description);
 
     
     my @tempo_album_refs = &get_album_refs($tempo_data_ref);
-    my $is_sacd = &is_sacd(\@descriptions);
 
-    &descriptions_array_cleanup(\@descriptions);
-
-
-
-    
+    my $is_sacd = 0;    
     my $physical_description = undef;
     my $desc_musicians = undef;
     my $desc_additional_musicians = undef;
 
-    if ( $#descriptions > -1 ) {
-	if ( $#descriptions > 0 ) { die(); }
-	$descriptions[0]=~ s/(^| )(Soittovapaa|Julkaisu[ a-z]*) (\d+.)+$//; # TODO: Check whether TM is interested in these
-	$physical_description = &descriptions2physical_description(\@descriptions);
-	$desc_musicians = &description2musicians(\$descriptions[0]);
-	$desc_additional_musicians = &description2additional_musicians(\$descriptions[0]);
+    if ( defined($description) ) {
+	#print STDERR "DESC: $description\n";
+	$is_sacd = &is_sacd(\$description);
+	$description =~ s/(^| )(Soittovapaa|Julkaisu[ a-z]*) (\d+.)+$//; # TODO: Check whether TM is interested in these
+	$physical_description = &description2physical_description(\$description);
+	$desc_musicians = &description2musicians(\$description);
+	$desc_additional_musicians = &description2additional_musicians(\$description);
     }
-
+	 
     my $artist_notes = get_single_entry("/$prefix/custom/artist_notes", $tempo_data_ref);
+
     if ( defined($artist_notes) && $artist_notes ) {
 	&description_cleanup(\$artist_notes);
     }
@@ -2707,7 +2697,7 @@ sub process_tempo_data2($$$$) {
     }
 
     
-    &process_performer_note($prefix, $tempo_data_ref, $marc_record_ref, \@descriptions, $desc_additional_musicians, \$field_511_content); # 511. Do this before process_tempo_authors(), as this does not remove anything from $tempo_data_ref!
+    &process_performer_note($prefix, $tempo_data_ref, $marc_record_ref, $desc_additional_musicians, \$field_511_content); # 511. Do this before process_tempo_authors(), as this does not remove anything from $tempo_data_ref!
 
     # MARC21: 1X0, 7X0 (FONO: ... )
     &process_tempo_authors($prefix, $tempo_data_ref, $marc_record_ref, $is_classical_music, $is_host);
@@ -2734,7 +2724,7 @@ sub process_tempo_data2($$$$) {
     # MARC: 300
     if ( $is_host ) {
 	extract_field_300($tempo_data_ref, $marc_record_ref, $customID, $is_sacd, $tempo_record_id, $physical_description, $media_as_per_title);
-	&process_descriptions2language_notes(\@descriptions, $marc_record_ref, $is_host);  # May update (host) 041 and 300. May add 546. Do only after 300 has been created
+	&process_description2language_notes(\$description, $marc_record_ref, $is_host);  # May update (host) 041 and 300. May add 546. Do only after 300 has been created
     }
 
     
@@ -2781,7 +2771,7 @@ sub process_tempo_data2($$$$) {
 
     # $prefix/descriptions
 
-    &process_descriptions($is_host, $prefix, $tempo_data_ref, $marc_record_ref, \@descriptions, \$field_511_content);
+    &process_description($is_host, $prefix, $tempo_data_ref, $marc_record_ref, \$description, \$field_511_content);
 
     if ( $field_511_content ) {
 	add_marc_field($marc_record_ref, '511', $field_511_content);
