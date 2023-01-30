@@ -530,7 +530,7 @@ sub custom_id2f007($$$$) {
 	    # return $default007c;
 	}
 	
-	print STDERR "WARNING\tUsing fallback 007. Description might contains some information...\n";
+	print STDERR "WARNING\tUsing fallback 007. Description might contain some information...\n";
 	# Fallback value for electronic stuff:
 	return $default007c;
     }
@@ -2329,6 +2329,18 @@ sub postprocess_asteri_links($) {
     }
 }
 
+sub fix_008_23($) {
+    my ( $marc_record_ref ) = @_;
+    my $f007 = ${$marc_record_ref}->get_first_matching_field('007');
+    if ( defined($f007) && $f007->{content} =~ /^c/ ) {
+	# Are all electronic resources online stuff...
+	# (008/23=o for verkkoaineisto comes from VIOLA-55)
+	${$marc_record_ref}->update_controlfield_character_position('008', 23, 'o');
+    }
+}
+    
+
+
 sub process_tempo_data2($$$$);
 sub process_tempo_data2($$$$) {
     my ( $prefix, $is_host, $tempo_data_ref, $marc_record_ref ) = @_;
@@ -2498,7 +2510,8 @@ sub process_tempo_data2($$$$) {
     process_genre($prefix, $tempo_data_ref, $marc_record_ref);
     process_sub_genre($prefix, $tempo_data_ref, $marc_record_ref);
 
-
+    fix_008_23($marc_record_ref);
+    
     my @languages = get_languages($prefix, $tempo_data_ref);
 
     my @ensembles = keyvals2vals(extract_keys("/$prefix/custom/ensemble", $tempo_data_ref));
@@ -2666,6 +2679,7 @@ sub process_tempo_data2($$$$) {
 
     if ( defined($tempo_record_id) ) {
 	add_marc_field($marc_record_ref, '035', "  \x1Fa(FI-Yle)$tempo_record_id");
+	add_marc_field($marc_record_ref, 'SID', "  \x1Fc$tempo_record_id\x1FbFI-Yle");
     }
     
     add_marc_field($marc_record_ref, '040', "  \x1FaFI-Yle\x1Fbfin\x1Ferda\x1FcFI-NLD");
