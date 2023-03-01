@@ -103,7 +103,11 @@ sub recording_location_details2date_of_event($) {
     }
     
     if ( ${$recording_location_details_ref} =~ s/^($yyyy_regexp$mm_regexp)($dd_regexp)-($dd_regexp)\.?$// ) { # YYYYMMDD-DD
-	return $1.$2.'-'.$1.$3; # multiple dates
+	return $1.$2.'-'.$1.$3;
+    }
+
+    if ( ${$recording_location_details_ref} =~ s/^($yyyy_regexp$mm_regexp)($dd_regexp)\&($dd_regexp)\.?$// ) { # YYYYMMDD-DD
+	return $1.$2.','.$1.$3; # multiple dates
     }
     
     return undef;
@@ -146,9 +150,23 @@ sub marc_create_field_033($$$) {
 	elsif ( $date_of_event =~ /^($yyyy_regexp$mm_regexp$dd_regexp)-($yyyy_regexp$mm_regexp$dd_regexp)$/ ) {
 	    my $start = $1;
 	    my $end = $2;
-	    my $content = "20\x1Fa${start}\x1Fa${end}";
-	    add_marc_field($marc_record_ref, '033', $content);
-	    #die($content);
+	    if ( $end > $start && $end - $start > 1 ) {
+		my $content = "20\x1Fa${start}\x1Fa${end}";
+		add_marc_field($marc_record_ref, '033', $content);
+	    }
+	    else { # Two consecutive dates:
+		my $content = "10\x1Fa${start}\x1Fa${end}";
+		my $field = add_marc_field($marc_record_ref, '033', $content);
+		die($field->toString()); # Not seen yet, untested
+	    }
+
+	}
+	# Consecutive dates:
+	elsif ( $date_of_event =~ /^($yyyy_regexp$mm_regexp$dd_regexp)(, *$yyyy_regexp$mm_regexp$dd_regexp)+$/ ) {
+	    $date_of_event =~ s/, */\x1Fa/g;
+	    my $content = "10\x1Fa".$date_of_event;
+	    my $field = add_marc_field($marc_record_ref, '033', $content);
+	    #die($field->toString()); # Not seen yet, untested
 	}
 	elsif ( $date_of_event ) {
 	    die();
@@ -160,7 +178,7 @@ sub marc_create_field_033($$$) {
 
 
 sub process_single_recording_location($$$) {
-    my ( $curr_rld, $marc_recordP, $is_classical_music ) = @_;
+    my ( $curr_rld, $marc_record_ref, $is_classical_music ) = @_;
     # Other event information goes to $o
     my ( $other_event_information, $tracks ) = &recording_location_details2other_event_information_and_tracks(\$curr_rld, $is_classical_music);
     
@@ -170,18 +188,18 @@ sub process_single_recording_location($$$) {
 
     if ( !$curr_rld ) { # Managed to extract all info
 	# TODO: tracks go to $3
-	&marc_create_field_033($marc_recordP, $other_event_information, $date_of_event);
+	&marc_create_field_033($marc_record_ref, $other_event_information, $date_of_event);
 
-	main::marc_add_date_and_place_of_an_event_note($marc_recordP, $other_event_information, $date_of_event, $place_of_event, $tracks);	
+	main::marc_add_date_and_place_of_an_event_note($marc_record_ref, $other_event_information, $date_of_event, $place_of_event, $tracks);	
 	
     }
     else {
-	die($curr_rld);
+	main::mark_record_as_rejected($marc_record_ref, "Failed to process recording location. Remaining data: '$curr_rld'");
     }
 }
 
 sub tempo_process_recording_location_details($$$$) {
-    my ( $prefix, $tempo_dataP, $marc_recordP, $is_classical_music) = @_;
+    my ( $prefix, $tempo_dataP, $marc_record_ref, $is_classical_music) = @_;
     my $recording_location_details = get_single_entry("/$prefix/custom/recording_location_details", $tempo_dataP);
     if ( defined($recording_location_details) ) {
 
@@ -191,7 +209,7 @@ sub tempo_process_recording_location_details($$$$) {
 
 	my @recording_location_details_array = &split_record_location_details($recording_location_details);
 	foreach my $curr_rld ( @recording_location_details_array ) {
-	    process_single_recording_location($curr_rld, $marc_recordP, $is_classical_music);
+	    process_single_recording_location($curr_rld, $marc_record_ref, $is_classical_music);
 	}
     }
 }
