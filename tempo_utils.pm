@@ -10,7 +10,7 @@ use strict;
 
 our $dd_regexp = "(?:0[1-9]|[12][0-9]|3[01])";
 our $mm_regexp = "(?:0[1-9]|1[012])";
-our $yyyy_regexp = "(?:1[6-9][0-9][0-9]|20[0-1][0-9]|202[0-2])";
+our $yyyy_regexp = "(?:1[6-9][0-9][0-9]|20[0-1][0-9]|202[0-3])";
 
 
 sub get_dd_regexp() {
@@ -246,4 +246,6 @@ sub normalize_tracks($) {
     $tracks = &collapse_tracks($tracks);
     return "Raidat ".$tracks;
 }
+
+
 1;
