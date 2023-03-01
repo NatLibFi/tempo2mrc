@@ -103,8 +103,8 @@ sub digitalized_by_Yle($) {
     return 0;
 }
 
-sub int2finnish_month_name($) {
-  my $m = shift();
+sub int2finnish_month_name($$) {
+  my ( $m, $marc_record_ref ) = @_;
   if ( $m eq "01" ) { return "tammikuu"; }
   if ( $m eq "02" ) { return "helmikuu"; }
   if ( $m eq "03" ) { return "maaliskuu"; }
@@ -117,21 +117,31 @@ sub int2finnish_month_name($) {
   if ( $m eq "10" ) { return "lokakuu"; }
   if ( $m eq "11" ) { return "marraskuu"; }
   if ( $m eq "12" ) { return "joulukuu"; }
-  die($m);
+
+  mark_record_as_rejected($marc_record_ref, "Illegal month code '$m'");
+
+  return '';
 }
 
 
 
 
-my %language2code = ( 'englanniksi' => 'eng',
-		      'latviaksi' => 'lav',
-		      'puolaksi' => 'pol',
-		      'ranskaksi' => 'fre',
-		      'ruotsiksi' => 'swe',
-		      'saksaksi' => 'ger',
-		      'suomeksi' => 'fin',
-		      'tanskaksi' => 'dan',
-		      'venäjäksi' => 'rus' );
+
+
+sub add_REP_skip($) {
+    my $marc_record_ref = shift;
+    my $field = ${$marc_record_ref}->add_field('REP', "  \x1Fas");
+    print STDERR "ADD REJECT FIELD: ", $field->toString(), "\n";
+}
+
+sub mark_record_as_rejected($$) {
+    my ( $marc_record_ref, $error_msg ) = @_;
+    &add_REP_skip($marc_record_ref);
+    if ( $error_msg ) {
+	print STDERR "ERROR\tReject record, reason: ", $error_msg, "\n";
+    }
+}
+    
 
 sub reject_batch($) {
     my $marc_records_ref = shift;
@@ -196,6 +206,22 @@ sub reject_batch($) {
 	}
     }
 
+
+    # REP $a s (=skip) detected
+    foreach my $record ( @{$marc_records_ref} ) {
+	# Sanity checks. (We might drop the nameless host,
+	# but keep the rest eventually?)
+	my @required_tags = ( 'REP' );
+	foreach my $tag ( @required_tags ) {
+	    my $field = $record->get_first_matching_field($tag);
+	    if ( defined($field) ) { # Donät bother to check $a 's':
+		print STDERR "BATCH REJECTED! REASON: ", $field->toString(), "\n";
+		return 1;
+	    }
+	}
+    }
+
+    
     print STDERR "BATCH ACCEPTED\n";
     # TODO: REJECT BATCH IF YEAR IS PRE-2020
     return 0;
@@ -208,8 +234,8 @@ sub is_year($) {
     return 0;
 }
 
-sub get_year($$) {
-    my ( $key, $tempo_dataP ) = @_;
+sub get_year($$$) {
+    my ( $key, $tempo_dataP, $marc_record_ref ) = @_;
     my ( $val ) = keyvals2vals(extract_keys($key, $tempo_dataP));
     my $specifier = undef;
     if ( defined($val) && $val ) {
@@ -233,10 +259,12 @@ sub get_year($$) {
 	    return ( $val, $specifier ); # will this cause issues
 	}
 	# Can't handle/guess:
-	if ( $val =~ /^(202)$/ ) {
+	if ( $val =~ /^(20.)$/ ) {
 	    return ( undef, $specifier );
 	}
-	die("Check $key, val='$val'");
+
+	&mark_record_as_rejected($marc_record_ref, "Check $key, val='$val'\n");
+	return ( undef, undef );
     }
     return ( undef, $specifier );
 }
@@ -259,9 +287,9 @@ sub get_tempo_id_from_marc_record($) {
 	if ( $cands[0]->{content} =~ /\x1Fa\(FI-Yle\)([^\x1F]+)$/ ) {
 	    return $1;
 	}
-	die();
+	die(); # NB! Batch rejection is already decided, thus keep die() here
     }
-    die("No ID from ".($#cands+1)." cands");
+    die("No ID from ".($#cands+1)." cands"); # NB! Batch rejection is already decided, thus keep die() here
     return undef;
 }
 
@@ -281,7 +309,6 @@ sub description_cleanup($) {
     ${$description_ref} =~ s/ +$//gm;
     print STDERR "DC: '", ${$description_ref}, "'\n";
     while ( ${$description_ref} =~ s/(^|\. |  )(?:$yhtyeen )?(?:$rooli|$rooli ja $rooli) lueteltu $jossakin(?:( ja| sekä) $jossakin)?(?:$|\.)/$1/im ) {
-	# die();
 	${$description_ref} =~ s/^ +//gm;
 	#${$description_ref} =~ s/ +$//gm;
 	${$description_ref} =~ s/ +/ /gm;	
@@ -298,7 +325,6 @@ sub is_sacd($) {
 
     if ( ${$description_ref} =~ s/\. SACD\././ ||
 	 ${$description_ref} =~ s/^SACD\.\s*// ) {
-	#print STDERR "\nDESC2:\n", join("\n", ${$description_ref}, "\n"; die();
 	return 1;
     }
 
@@ -340,18 +366,23 @@ sub process_ensemble($$$) {
 
 
 sub extract_identifier($$$) {
-    my ( $key, $tempo_dataP, $marc_recordP ) = @_;
+    my ( $key, $tempo_dataP, $marc_record_ref ) = @_;
 
     my @codes = keyvals2vals(extract_keys($key, $tempo_dataP));
-    if ( $#codes == -1 ) { 
+    if ( scalar(@codes) == 0 ) {
 	if ( $debug ) {
 	    print STDERR "No ISRC found via '$key'\n";
 	}
 	return;
     }
     # Multiple EAN/ISRC should not happen
-    if ( $#codes > 0 && $key =~ /\/(ean|isrc)$/ ) { die(); } # Very much unxexpected
+    if ( scalar(@codes) > 1 && $key =~ /\/(ean|isrc)$/ ) {
+	print STDERR "ERROR\tReject record\tReason: multiple instance of '$key'\n";
+	&add_REP_skip($marc_record_ref);
+    }
+    
     @codes = sort @codes; # TM wished this for isrc 2022-08-19. (Should we do ean and isrc separately?)
+    
     foreach my $curr_code ( @codes ) {
 	if ( $curr_code !~ /\S/ ) {
 	    # harmless, value is ''.
@@ -365,21 +396,25 @@ sub extract_identifier($$$) {
 	    # viivakoodit ovat jatkossa tuossa EAN-kentässä (myös ne vanhan
 	    # aikakauden viivakoodit jotka eivät ole UPC:tä eivätkä EAN:ää).
 	    if ( $curr_code =~ /^[0-9]{13}$/ ) {
-		add_marc_field($marc_recordP, '024', "3 \x1Fa$curr_code");
+		add_marc_field($marc_record_ref, '024', "3 \x1Fa$curr_code");
 	    }
 	    # Assume it a UPC code
 	    elsif ( $curr_code =~ /^[0-9]{12}$/ ) {
-		add_marc_field($marc_recordP, '024', "1 \x1Fa$curr_code");
+		add_marc_field($marc_record_ref, '024', "1 \x1Fa$curr_code");
 	    }
 	    # Assume it a GTIN code, and convert it to EAN:
 	    # (KS apparently provived this simple conversion rule:
 	    elsif ( $curr_code =~ /^0([0-9]{13})$/ ) {
 		my $gtin2ean = $1;
-		add_marc_field($marc_recordP, '024', "3 \x1Fa${gtin2ean}");
+		add_marc_field($marc_record_ref, '024', "3 \x1Fa${gtin2ean}");
 	    } 
 	    else {
-		print STDERR "Unexpected ean '$curr_code'\n                1234567890123\n";
-		if ( !$robust ) { die(); }
+		if ( $robust ) {
+		    print STDERR "WARNING\tUnexpected ean '$curr_code'\n";
+		}
+		else {
+
+		}
 	    }
 	}
 	elsif ( $key =~ /\/isrc$/ ) {
@@ -387,12 +422,12 @@ sub extract_identifier($$$) {
 		# TM 2022-08-19: "ISRC:t tallennetaan Violaan ilman väliviivoja"
 		# TODO: näille pitäs kirjoittaa testejä...
 		$curr_code =~ s/-//g;
-		add_marc_field($marc_recordP, '024', "0 \x1Fa$curr_code");
+		add_marc_field($marc_record_ref, '024', "0 \x1Fa$curr_code");
 	    }
 	    # Bug in data?: 628dfa6ac5799c0029f78b2f.json:"isrc": "FIBAR2200107 Gert Kaasik,Juha Vainio,Kaisa",
 	    elsif ( $curr_code =~ /^(([A-Z0-9]-?){11}[A-Z0-9]) / ) {
 		$curr_code = $1;
-		add_marc_field($marc_recordP, '024', "0 \x1Fa$curr_code");
+		add_marc_field($marc_record_ref, '024', "0 \x1Fa$curr_code");
 	    }
 	    else {
 		print STDERR "Unexpected/unhandled ISRC value\n key:'$key',\n val:'$curr_code'\n";
@@ -401,28 +436,33 @@ sub extract_identifier($$$) {
 	}
 	# ISWC is new, and not seen in Fono!
 	elsif ( $key =~ /\/iswc$/ && $curr_code =~ /^[a-z0-9]{11}/i ) {
-	    add_marc_field($marc_recordP, '024', "7 \x1Fa$curr_code");
+	    add_marc_field($marc_record_ref, '024', "7 \x1Fa$curr_code");
 	}
 	else {
-	    print STDERR "Unexpected key or value key\n key:'$key',\n val:'$curr_code'\n";
-	    if ( !$robust ) {
-		die();
-	    }
-	}    
+	    
+	    print STDERR "ERROR\tReject record\tUnexpected key or value key\n key:'$key',\n val:'$curr_code'\n";
+	    &add_REP_skip($marc_record_ref);
+	}
     }
 } 
 
-sub get_customID($$) {
-    my ( $tempo_dataP, $prefix ) = @_;
+sub get_customID($$$) {
+    my ( $tempo_dataP, $prefix, $marc_record_ref ) = @_;
     my $key = "/$prefix/custom/CustomID";
     my @vals = keyvals2vals(extract_keys($key, $tempo_dataP));
-    if ( $#vals != 0 ) {
+    if ( scalar(@vals) == 0 ) {
 	# 2022-09-26: CustomID-less stuff has started to appear...
 	return undef;
+    }
+    if ( scalar(@vals) > 1 ) {
+
+	print STDERR "ERROR\tReject record\tReason: multiple custom ids\n";
+	&add_REP_skip($marc_record_ref);
 	
 	print STDERR "Unexpected number of custom ids (N=", ($#vals), ") for $key:\n  ", join("\n  ", @vals), "\n";
+
 	print STDERR "ALL DATA:\n", join("\n", @{$tempo_dataP}), "\n";
-	#die();
+
     }
     my $customID = $vals[0];   
     return $customID;
@@ -465,8 +505,8 @@ sub tempo_is_electronic_resource($$) {
     return 1;
 }
 
-sub custom_id2f007($$$$) {
-    my ( $customID, $tempo_dataP, $is_sacd, $tempo_title ) = @_;
+sub custom_id2f007($$$$$) {
+    my ( $customID, $tempo_dataP, $is_sacd, $tempo_title, $marc_record_ref ) = @_;
 
     # LS 20211018:
     # "Meillä ei suoraan ole kenttää, jossa ilmoitetaan aineiston ilmiasu,
@@ -476,17 +516,21 @@ sub custom_id2f007($$$$) {
     # [=%custom_id2f007], jos siitä on apua:"
     if ( defined($customID) && !digitalized_by_Yle($customID) && $customID =~ /^([\-\+]?[A-Z]+-)/ ) {
 	my $type = $1;
-	if ( !defined($custom_id2f007{$type}) ) { die("Can't handle '$customID'"); }
+	if ( !defined($custom_id2f007{$type}) ) {
+	    print STDERR "ERROR\tReject record\tReason: can't handle customID '$customID'\n";
+	    &add_REP_skip($marc_record_ref);
+	    return undef;
+	}
 	my $value = $custom_id2f007{$type};
 
-	# Every (already seen) kartuntasarja is listed (=spported) by the regexp
+	# Every (already seen) kartuntasarja is listed (=supported) by the regexp
 	if ( $customID =~ /^(CD-|CDY-|\+LP-)/ ) {
 	    return $value;
 	}
 	# Untested/unsupported values:
-	if ( !$robust ) {
-	    die($value);
-	}
+	print STDERR "ERROR\tReject record\tReason: untested/unsupported customID value '$value'\n";
+	&add_REP_skip($marc_record_ref);
+
 	return $value;
     }
 
@@ -545,34 +589,43 @@ our %map2physical_description = (
 # seen: m4a	
 );
 
-sub map2physical_description($) {
-    my $desc = shift;
+sub map2physical_description($$) {
+    my ( $desc, $marc_record_ref ) = @_;
     if ( defined($map2physical_description{$desc}) ) {
 	return $map2physical_description{$desc};
     }
+    # Unhandled values, that do not cause rejection:
     if ( $desc =~ /^(m4a)$/ ) {
 	print STDERR "WARNING\tNot sure about the physical description of $desc.\n";
 	return undef;
     }
-    if ( !$robust ) {
-	foreach my $key ( sort keys %map2physical_description ) {
-	    my $val = $map2physical_description{$key};
-	    print STDERR "'$key' => '$val'\n";
-	}
-	die("Unable to map '$desc'");
+
+    # Unhandled values that cause rejection:
+    foreach my $key ( sort keys %map2physical_description ) {
+	my $val = $map2physical_description{$key};
+	print STDERR "'$key' => '$val'\n";
     }
+
+    print STDERR "ERROR\tReject record\tReason: unknown physical description '$desc'\n";
+    &add_REP_skip($marc_record_ref);
+
     return undef;
 }
 
-my %physical_description2007 = (
+my %physical_description_to_007 = (
     'C-kasetti' => $default_C,
     'CD-äänilevy' => $default_CD
 );
 
-sub physical_description2007($) {
-    my $pd = shift;
-    if ( !defined($physical_description2007{$pd}) ) { die(); }
-    return $physical_description2007{$pd};
+sub physical_description_to_007($$) {
+    my ( $pd, $marc_record_ref ) = @_;
+    if ( defined($physical_description_to_007{$pd}) ) {
+	return $physical_description_to_007{$pd};
+    }
+    print STDERR "ERROR\tReject record\tReason: unable to map phys. desc => 007 '$pd'\n";
+    &add_REP_skip($marc_record_ref);
+    return undef;
+    
 }
 
 sub normalize_musicians($) {
@@ -589,8 +642,8 @@ sub normalize_musicians($) {
     ${$musicians_ref} =~ s/\)\.$/\)/g;
 }
 
-sub description2musicians($) {
-    my ( $description_ref ) = @_;
+sub description2musicians($$) {
+    my ( $description_ref, $marc_record_ref ) = @_;
 
     print STDERR "D2M '",  ${$description_ref}, "'\n";
 
@@ -618,8 +671,10 @@ sub description2musicians($) {
 
     if ( ${$description_ref} =~ /jäsenet/i ) {
 	# 'Jere Ijäs ja Monacon Työväen Palloilijat. Muut jäsenet: Tom Nyman (bassokitara). Anssi Nykänen (rummut). Sekä: Viitasen Piia (taustalaulu). J. Karjalainen (huuliharppu). Miikka Paatelainen (steel-kitara).'
-	
-	die(${$description_ref});
+
+	# Don't accept record as some information is lost:
+	print STDERR "ERROR\tReject record\tReason: desc2musicians '", ${$description_ref}, "'\n";
+	&add_REP_skip($marc_record_ref);
     }
 
     return undef;
@@ -641,35 +696,26 @@ sub description2additional_musicians($) {
 }
 
 
-sub description2physical_description($) {
-    my ( $description_ref ) = @_;
+sub description2physical_description($$) {
+    my ( $description_ref, $marc_record_ref ) = @_;
 
     my %etlist;
 
     if ( ${$description_ref} =~ s/ ?Alkup(?:\.|eräinen) formaatti:? (CD|KN|m4a)\.?$// ||
 	 ${$description_ref} =~ s/ ?Alkup(?:\.|eräinen) formaatti:? (CD|KN|m4a)\. / / ) {
-	my $physical_description = &map2physical_description($1);
-	if ( defined($physical_description) ) {
-	    $etlist{$physical_description} = 1;
-	}
-    }
-    elsif ( ${$description_ref} =~ /Alkup.*? formaatti: / ) {
-	die(${$description_ref});
+	my $original_format = $1;
+	return &map2physical_description($original_format, $marc_record_ref);
     }
 
-    my @cands = keys %etlist;
-
-    if ( $#cands == 0 ) {
-	return $cands[0];
-    }
-    if ( $#cands > 0 ) {
-	die();
+    if ( ${$description_ref} =~ /Alkup.*? formaatti: / ) {
+	print STDERR "ERROR\tReject record\tReason: incomplete description proecessing '", ${$description_ref}, "'\n";
+	&add_REP_skip($marc_record_ref);
     }
     return undef;
 }
 
-sub custom_id2physical_description($$$$) { # 300$a basename
-    my ( $customID, $tempo_dataP, $is_sacd, $physical_description) = @_;
+sub custom_id2physical_description($$$$$) { # 300$a basename
+    my ( $customID, $tempo_dataP, $is_sacd, $physical_description, $marc_record_ref) = @_;
     my %hits;
     if ( defined($customID) ) {
 	if ( $customID =~ /^(\+LPS-|45S-)/ ) {
@@ -698,13 +744,15 @@ sub custom_id2physical_description($$$$) { # 300$a basename
     }
 
     my @extent_types = sort keys %hits;
-    if ( $#extent_types == 0 ) {
+    if ( scalar(@extent_types) > 1 ) {
+	print STDERR "ERROR\tReject record\tReason: multiple extent types: ", join("\n", @extent_types), "\n";
+	&add_REP_skip($marc_record_ref);
+    }
+
+    if ( scalar(@extent_types) == 1 ) {
 	return $extent_types[0];
     }
-    if ( $#extent_types > 0 ) {
-	print STDERR join("\n", @extent_types), "\n";
-	die();
-    }
+
     
     print STDERR "ERROR\tUnable to create field 300\n";
     if ( defined($customID) ) {
@@ -738,8 +786,8 @@ sub extract_field_006($$$$) {
 }
 
 sub extract_field_007($$$$$$$) {
-    my ( $tempo_dataP, $marc_recordP, $tempo_record_id, $customID, $is_sacd, $tempo_title, $physical_description ) = @_;
-    my $content = custom_id2f007($customID, $tempo_dataP, $is_sacd, $tempo_title);
+    my ( $tempo_dataP, $marc_record_ref, $tempo_record_id, $customID, $is_sacd, $tempo_title, $physical_description ) = @_;
+    my $content = custom_id2f007($customID, $tempo_dataP, $is_sacd, $tempo_title, $marc_record_ref);
 
     # if ( defined($content) ) { print STDERR "Custom ID -based 007: $content\n"; }
     if ( !defined($content) ) {
@@ -752,9 +800,9 @@ sub extract_field_007($$$$$$$) {
 
 
     if ( defined($physical_description) ) {
-	my $content2 = &physical_description2007($physical_description);
+	my $content2 = &physical_description_to_007($physical_description, $marc_record_ref);
 	# Override CustomID=DIGI-based value: 
-	if ( !defined($content) || $content eq $default007c ) {
+	if ( defined($content2) && ( !defined($content) || $content eq $default007c ) ) {
 	    $content = $content2;
 	    #if ( defined($content) ) { print STDERR "Physical description based 007: $content\n"; }
 	}
@@ -762,7 +810,8 @@ sub extract_field_007($$$$$$$) {
 	    # do nothing
 	}
 	else {
-	    die("DESC '$physical_description'/'$default_CD' vs '$content'");
+	    print STDERR "ERROR\tReject record\tReason: DESC '$physical_description'/'$default_CD' vs '$content'\n";
+	    &add_REP_skip($marc_record_ref);
 	}
     }
     
@@ -772,33 +821,34 @@ sub extract_field_007($$$$$$$) {
 	$content = $default007;
     }
 
-    if ( defined($content) ) { 
-	add_marc_field($marc_recordP, '007', $content);
-	$field007{$tempo_record_id} = $content; # Cache me
-    }
+    add_marc_field($marc_record_ref, '007', $content);
+    $field007{$tempo_record_id} = $content; # Cache me
 }
 
-sub media_nom2ptv($) { # convert nominative case to partitive case
-    my $nom = shift;
-    if ( $nom =~ s/levy$/levyä/ ) {
-	return $nom;
-    }
-    if ( $nom =~ s/kasetti$/kasettia/ ) {
-	return $nom;
-    }
-    die($nom);
-}
+#sub media_nom2ptv($) { # convert nominative case to partitive case
+#    my $nom = shift;
+#    if ( $nom =~ s/levy$/levyä/ ) {
+#	return $nom;
+#    }
+#    if ( $nom =~ s/kasetti$/kasettia/ ) {
+#	return $nom;
+#    }
+#    die($nom);
+#}
 
 
 
 sub extract_field_300($$$$$$$) {
-    my ( $tempo_dataP, $marc_recordP, $customID, $is_sacd, $tempo_record_id, $physical_description, $media_as_per_title ) = @_;
+    my ( $tempo_dataP, $marc_record_ref, $customID, $is_sacd, $tempo_record_id, $physical_description, $media_as_per_title ) = @_;
 
-    my $f300a_base = custom_id2physical_description($customID, $tempo_dataP, $is_sacd, $physical_description);
+    my $f300a_base = custom_id2physical_description($customID, $tempo_dataP, $is_sacd, $physical_description, $marc_record_ref);
 
     if ( !defined($f300a_base) ) {
-	if ( defined($media_as_per_title) ) { die(); } # TODO: Use me
-	#if ( !$robust ) { die(); }
+	if ( defined($media_as_per_title) ) {
+	    # TODO: Use $media_as_per_title information!
+	    print STDERR "ERROR\tReject record\tReason: use '$media_as_per_title' for field 300\n";
+	    &add_REP_skip($marc_record_ref);
+	} 
 	return undef;
     }
 
@@ -808,11 +858,12 @@ sub extract_field_300($$$$$$$) {
 	    $f300a_base = $media_as_per_title;
 	}
 	else {
-	    die("$f300a_base vs $media_as_per_title");
+	    print STDERR "ERROR\tReject record\tReason: conflicting field 300 data: $f300a_base vs $media_as_per_title\n";
+	    &add_REP_skip($marc_record_ref);
 	}
     }
 
-    add_marc_field($marc_recordP, '300', "  \x1Fa$f300a_base");
+    add_marc_field($marc_record_ref, '300', "  \x1Fa$f300a_base");
     $h773{$tempo_record_id} = $f300a_base;
 
 }
@@ -822,7 +873,7 @@ sub extract_field_344($) {
     my ( $marc_recordP ) = @_;
     my $f007 = ${$marc_recordP}->get_first_matching_field_content('007');
     if ( !defined($f007) ) {
-	if ( !$robust ) { die(); }
+	print STDERR "extract_field_344(): No 007 field found!\n";
 	return undef;
     }
     if ( $f007 =~ /^s..b/ ) {
@@ -904,15 +955,16 @@ sub keyvals2unique_vals {
 
 
 
-sub get_label($$) {
-    my ( $head, $arr_ref ) = @_;
+sub get_label($$$) {
+    my ( $head, $arr_ref, $marc_record_ref ) = @_;
     my $label = undef;
     my $curr_prefix = "/$head/master_ownerships";
     my $index = 0;
     my @labels = keyvals2vals(extract_keys($curr_prefix."[$index]/label/label_name", $arr_ref));
 
-    if ( $#labels > 0 ) {
-	die(); # not yet seen
+    if ( scalar(@labels) > 1 ) { # Not seen yet
+	print STDERR "ERROR\tReject record\tReason: multiple label_names\n";
+	&add_REP_skip($marc_record_ref);
     }
 
     @labels = grep { $_ ne 'Ei levymerkkiä' } @labels;
@@ -944,21 +996,19 @@ my %normalize_instrument_hash = (
     
     );
 
-sub normalize_instrument($) {
-    my ( $instrument ) = @_;
+sub normalize_instrument($$) {
+    my ( $instrument, $marc_record_ref ) = @_;
     if ( defined($normalize_instrument_hash{$instrument}) ) {
 	return $normalize_instrument_hash{$instrument};
     }
 
     # Needs processing:
-    if ( index($instrument, ':-') > -1 ) {
-	print STDERR "TODO\tnormalize_instrument($instrument)\n";
-	if ( !$robust ) {
-	    die($instrument);
-	}
+    if ( index($instrument, ':-') > -1 || index($instrument, '---') > -1 ) {
+	print STDERR "ERROR\tReject record\tInstrument '$instrument' requires normalization\n";
+	&add_REP_skip($marc_record_ref);
     }
 
-    # return as is:
+    # Return as is:
     return $instrument;
 }
 
@@ -984,7 +1034,10 @@ sub process_performer_note($$$$$) {
 	    my $name = $2;
 	    $skip_nimeamaton = 0;
 	    $name =~ s/ \(.*\)$//; # remove tempo tarke etc.
-	    if ( defined($name[$index]) ) { die(); }
+	    if ( defined($name[$index]) ) {
+		print STDERR "ERROR\tReject record\tReason: performer note issue #1\n";
+		&add_REP_skip($marc_record_ref);
+	    }
 	    $name[$index] = $name;
 
 	}
@@ -993,7 +1046,7 @@ sub process_performer_note($$$$$) {
 		my $index = $1;
 		my $instrument = $2;
 	    
-		$instrument = normalize_instrument($instrument);
+		$instrument = normalize_instrument($instrument, $marc_record_ref);
 
 		if ( $instrument ) { # will be stored in marc field 511
 		    if ( $instrument =~ /yhtye$/ ) {
@@ -1006,7 +1059,8 @@ sub process_performer_note($$$$$) {
 				$yhtye = $instrument;
 			    }
 			    else {
-				die($yhtye . ' vs ' . $instrument);
+				print STDERR "ERROR\tReject record\tReason: performer note issue #2: $yhtye vs $instrument\n";
+				&add_REP_skip($marc_record_ref);
 			    }
 			}
 			else {
@@ -1036,9 +1090,12 @@ sub process_performer_note($$$$$) {
 	}
 
     }
-    if ( $#name < $#instrument ) { die(); }
+    if ( scalar(@name) < scalar(@instrument) ) {
+	print STDERR "ERROR\tReject record\tReason: performer note issue #3: N name vs N instrument\n";
+	&add_REP_skip($marc_record_ref);
+    }
     my $f511 = '';
-    for ( my $i=0; $i <= $#name; $i++ ) {
+    for ( my $i=0; $i < scalar(@name); $i++ ) {
 	if ( defined($name[$i]) && $name[$i] ne 'Nimeämätön' ) {
 	    $f511 .= $name[$i];
 	    if ( defined($instrument[$i]) ) {
@@ -1106,21 +1163,31 @@ sub is_nld_auth($) {
 
 
 
-sub country2code($) {
-    my $country = shift;
+sub country2code($$) {
+    my ( $country, $marc_record_ref ) = @_;
     $country = &normalize_location($country);
     if ( defined($country2code_hash{$country}) ) {
 	return $country2code_hash{$country};
     }
     my $msg = "WARNING\tUnable to map country '$country' to 008/15-17 code.";
-    if ( !$robust ) {
-	die($msg);
-    }
-    print STDERR $msg,"\n";
+
+    print STDERR "ERROR\tReject record\tReason: $msg\n";
+    &add_REP_skip($marc_record_ref);
+
     return '|||'; # default, might be 'fi ' as well...
 }
 
 
+# These come from descpiptions and go to 041$g ("esittelylehtinen englanniksi")
+my %language2code = ( 'englanniksi' => 'eng',
+		      'latviaksi' => 'lav',
+		      'puolaksi' => 'pol',
+		      'ranskaksi' => 'fre',
+		      'ruotsiksi' => 'swe',
+		      'saksaksi' => 'ger',
+		      'suomeksi' => 'fin',
+		      'tanskaksi' => 'dan',
+		      'venäjäksi' => 'rus' );
 
 
 # http://marc21.kansalliskirjasto.fi/kielet.htm
@@ -1205,9 +1272,9 @@ my %lang2marc_lookup = (
 # add lowercase keys too as an experiment; this should be optimised, preferably by defining lowercase keys
 %lang2marc_lookup = (%lang2marc_lookup, map {(tempo_lc($_), $lang2marc_lookup{$_})} keys %lang2marc_lookup);
 
-sub lang_to_marc($) {
+sub lang_to_marc($$) {
     # Copypasted directly from fono_to_marc.pl
-    my $langFono = $_[0];
+    my ( $langFono, $marc_record_ref ) = @_;
 
     if ( $langFono =~ /^Afrikka: gun$/ ) { return 'guw'; } # ISO-639-3
     
@@ -1226,7 +1293,8 @@ sub lang_to_marc($) {
 	    return 'sme';
 	}
 
-	die("TODO: handle '$langFono");
+	print STDERR "ERROR\tReject record\tReason: unhandled sami variant '$langFono'\n";
+	&add_REP_skip($marc_record_ref);
 	return 'smi';
     }
 
@@ -1256,7 +1324,7 @@ sub lang_to_marc($) {
     }
     
     if ( $langFono =~ s/\?$// ) {
-	return &lang_to_marc($langFono);
+	return &lang_to_marc($langFono, $marc_record_ref);
     }
     
     print STDERR "Tuntematon kieli: '$langFono'\n";
@@ -1268,9 +1336,10 @@ sub lang_to_marc($) {
 	 $langFono eq 'ym' ) {
 	return '';
     }
-    
-    die();
-    #return
+
+    print STDERR "ERROR\tReject record\tReason: unhandled language '$langFono'\n";
+    &add_REP_skip($marc_record_ref);    
+    return '';
 }
 
 
@@ -1293,10 +1362,10 @@ sub duration2hhmmss($) {
 	}
     }
     else {
-	die("SHIT DURATION: '$duration'");
+	return '';
     }
 
-    if ( $hh > 99 ) { die(); }
+    if ( $hh > 99 ) { return ''; } # Hour range is 00...99 in field 306$a...
 	
     $hh = sprintf("%02d", $hh);
     $mm = sprintf("%02d", $mm);
@@ -1318,35 +1387,39 @@ sub iso639_3_to_marc_language_code($) {
     return $code
 }
 
-sub languages_to_008_35_37 {
-    my ( $languages_ref, $ensembles_ref ) = @_;
+sub languages_to_008_35_37($$$) {
+    my ( $languages_ref, $ensembles_ref, $marc_record_ref ) = @_;
     my @languages = @{$languages_ref};
 
-    if ( $#languages < 0 ) {
+    if ( scalar(@languages) == 0 ) {
 	# TM 2022-08-17: "Instrumentaaliesityksissä koodiksi tallennetaan "zxx".
 	# Tieto löytyy Tempo-tietueen kohdasta custom: ensemble: 0: "KI instrumentaaliesitys"
 	if ( grep(/^KI\b/, @{$ensembles_ref}) ) {
 	    return 'zxx';
 	}
-
-	
 	return '|||';
     }
 
-    if ( $#languages > 1 ) { return 'mul'; } # 3+ languages mean multilang
+    if ( scalar(@languages) > 2 ) { return 'mul'; } # 3+ languages mean multilang
+
+
+    if ( $languages[0] =~ /^$iso639_3_regexp$/ ) {
+	# Language might not have an official MARC language code.
+	# However, it might belong to a language family that has such a code.
+	return iso639_3_to_marc_language_code($languages[0]);
+    }
+
     # "Jos kielikoodia ei löydy virallisten MARC-kielikoodien
     # joukosta, mutta kielelle kuitenkin löytyy (ISO-)koodi, niin
     # 008-kentän merkkipaikkaan 35-37 voidaan merkitä koodi '|||'
     # (ei koodattu) ja 041-kenttään tarkempi koodi.
-
-    if ( $languages[0] =~ /^$iso639_3_regexp$/ ) {
-	# Language might not have an official MARC language code.
-	# However, it might belong to a group that has such a code.
-	return iso639_3_to_marc_language_code($languages[0]);
-	# return '|||'; # Never gets here...
+    
+    if ( length($languages[0]) != 3 ) {
+	print STDERR "ERROR\tReject record\tReason: lang length != 3 '", $languages[0], "'\n";
+	&add_REP_skip($marc_record_ref);
+	return '|||';
     }
-    if ( length($languages[0]) != 3 ) { die(); }
-   return $languages[0];
+    return $languages[0];
 }
 
 
@@ -1466,10 +1539,26 @@ sub is_classical_music($$) {
 }
 
 
+sub genre_to_008_18_19($) {
+    my ( $genre ) = @_;
 
+    if ( $genre eq 'L1B' ) { return 'pt'; } 
+    if ( $genre eq 'L1C' ) { return 'sg'; }
+    if ( $genre =~ /^L2(A|B|BB|L|N)?$/ ) { return 'gm'; }
+    if ( $genre =~ /^L3[ALUX]?$/ ) { return 'fm'; }
+    if ( $genre =~ /^L4(A|AA|L)?$/ ) { return 'rc'; }
+    if ( $genre eq 'L5A' || $genre eq 'L5AA' ) { return 'jz'; }
+    if ( $genre eq 'L5B' ) { return 'bl'; }
+    if ( $genre =~ /^L6[CDLVX]?$/ ) { return 'pp'; }
+    if ( $genre =~ /^L6B$/ ) { return 'cy'; }
+    if ( $genre =~ /^L6T$/ ) { return 'df'; }
+    if ( $genre =~ /^L9E$/ ) { return 'mp'; }
+
+    return '||';
+}
 
 sub map_genre_to_field_008($$) {
-    my ( $genre, $marc_recordP ) = @_;
+    my ( $genre, $marc_record_ref ) = @_;
     if ( !defined($genre) ) {
 	# Complain?
 	return;
@@ -1482,36 +1571,38 @@ sub map_genre_to_field_008($$) {
 
     # fono.fi has some info on these:
     # http://www.fono.fi/Dokumentti.aspx?kappale=lapsi&culture=fi&sort=3&ID=36332ba3-065e-4993-a396-0f1ad44ec67a
-    my $f008 = ${$marc_recordP}->get_first_matching_field('008');
-    if ( !defined($f008) ) { die(); }
+    my $f008 = ${$marc_record_ref}->get_first_matching_field('008');
+    if ( !defined($f008) ) {
+	print STDERR "ERROR\tReject record\tReason:no 008 to map genre info '$genre'\n";
+	&add_REP_skip($marc_record_ref);
+	return;
+    }
+
+    
     if ( $genre =~ /^(L(1[ABCL]|2(A|B|BB|L|N)?|3[ALUX]?|4(A|AA|L)?|5(A|AA|B|L)|6[BCDKTVX]|L9E))\b/ ) {
 	$genre = $1;
 
-	my $f008_18 = '||';
+
 
 	if ( $genre eq 'L1A' ) {
-	    add_marc_field($marc_recordP, '084', "  \x1Fa78.35\x1F2ykl");
+	    add_marc_field($marc_record_ref, '084', "  \x1Fa78.35\x1F2ykl");
 	}	
-	elsif ( $genre eq 'L1B' ) { $f008_18 = 'pt'; } 
 	elsif ( $genre eq 'L1C' ) {
-	    add_marc_field($marc_recordP, '084', "  \x1Fa78.32\x1F2ykl");
-	    $f008_18 = 'sg';
+	    add_marc_field($marc_record_ref, '084', "  \x1Fa78.32\x1F2ykl");
 	}
-	elsif ( $genre =~ /^L2(A|B|BB|L|N)?$/ ) { $f008_18 = 'gm'; }
-	elsif ( $genre =~ /^L3[ALUX]?$/ ) { $f008_18 = 'fm'; }
-	elsif ( $genre =~ /^L4(A|AA|L)?$/ ) { $f008_18 = 'rc'; }	    
-	elsif ( $genre eq 'L5A' || $genre eq 'L5AA' ) { $f008_18 = 'jz'; }
-	elsif ( $genre eq 'L5B' ) { $f008_18 = 'bl'; }
-	elsif ( $genre =~ /^L6[CDLVX]?$/ ) { $f008_18 = 'pp'; }
-	elsif ( $genre =~ /^L6B$/ ) { $f008_18 = 'cy'; }
-	elsif ( $genre =~ /^L6T$/ ) { $f008_18 = 'df'; }
-	elsif ( $genre =~ /^L9E$/ ) { $f008_18 = 'mp'; }
+
+	my $f008_18 = &genre_to_008_18_19($genre);
 	
-	if ( length($f008_18) != 2 ) { die(); } # sanity check
-	${$marc_recordP}->update_controlfield_character_position('008', 18, $f008_18);
+	if ( length($f008_18) != 2 ) { # Sanity check:
+	    print STDERR "ERROR\tReject record\tReason: size!=2 '$f008_18'\n";
+	    &add_REP_skip($marc_record_ref);
+	    $f008_18 = '||';
+	}
+	
+	${$marc_record_ref}->update_controlfield_character_position('008', 18, $f008_18);
 
 	if ($genre =~ /^L[123456]L$/ ) {
-	    ${$marc_recordP}->update_controlfield_character_position('008', 22, 'j');
+	    ${$marc_record_ref}->update_controlfield_character_position('008', 22, 'j');
 	}
     }
     else {
@@ -1576,8 +1667,8 @@ sub json2tempo_data_string_array($) {
 }
 
 
-sub get_languages($$) {
-    my ( $prefix, $tempo_dataP ) = @_;
+sub get_languages($$$) {
+    my ( $prefix, $tempo_dataP, $marc_record_ref ) = @_;
     my $curr_key = "/$prefix/custom/languages";
     my @languages = extract_keys($curr_key, $tempo_dataP);
     
@@ -1588,7 +1679,7 @@ sub get_languages($$) {
     else {
 	@languages = keyvals2vals(@languages);
 	#print STDERR "LANGUAGES:\n", join("\n", @languages);
-	@languages = map { lang_to_marc($_) } @languages;
+	@languages = map { lang_to_marc($_, $marc_record_ref) } @languages;
 	@languages = uniq(@languages); # remove duplicates
 	@languages = grep(/\S/i, @languages); # remove empty
 	if ( $debug ) {
@@ -1659,9 +1750,17 @@ sub add_languages_to_041g($$) {
     my @words = split(/\s+/, $text);
     foreach my $word ( @words ) {
 	$word =~ s/[^\p{PosixAlnum}]$//;
-	if ( $word =~ /ksi$/ ) {
-	    if ( defined($language2code{$word}) ) {
-		my $lang_code = $language2code{$word};
+	if ( $word =~ /^(.*)ksi$/ ) {
+	    my $lang_nom_cand = $1;
+	    my $lang_code = undef;
+	    if ( defined($language2code{$word}) ) { # Languages in translative
+		$lang_code = $language2code{$word};
+	    }
+	    else { # Use the normal version as fallback:
+		$lang_code = &lang_to_marc($lang_nom_cand);
+	    }
+
+	    if ( $lang_code ) {
 		if ( !defined($f041) ) {
 		    $f041 = add_marc_field($marc_record_ref, '041', "  \x1Fg${lang_code}");
 		}
@@ -1674,10 +1773,7 @@ sub add_languages_to_041g($$) {
 		}
 	    }
 	    else {
-		print STDERR "TODO?\tMap '$word' to a language code\n";
-		if ( !$robust ) {
-		    die($word);
-		}
+		&mark_record_as_rejected($marc_record_ref, "Map '$word' to a language code");
 	    }
 	}
     }
@@ -1688,25 +1784,31 @@ sub add_languages_to_041g($$) {
 sub add_subfield_300e($) {
     my ( $marc_record_ref ) = @_;
     my $f300 = ${$marc_record_ref}->get_first_matching_field('300');
-    if ( defined($f300) ) {
-	if ( $f300->{content} =~ /\x1Fa/ ) {
-	    if ( index($f300->{content}, "\x1Fe") > -1 ) {
-		if ( index($f300->{content}, "\x1Fe1 tekstili") ) {
-		    # No need to add.
-		}
-		else {
-		    die(); # oops $e exists but with stange content
-		}
-	    }
-	    else {
-		print STDERR "Field 300: add subfield \$e1 tekstiliite\n";
-		$f300->{content} .= " +\x1Fe1 tekstiliite";
-	    }
-	}
-	else {
-	    die();
-	}
+    if ( !defined($f300) ) {
+	# unexpected but we soldier on...
+	return;
     }
+
+    if ( index($f300->{content}, "\x1Fa") == -1 ) {
+	print STDERR "ERROR\tReject record\tReason: missing 300\$a\n";
+	&add_REP_skip($marc_record_ref);
+	return;
+    }
+
+    if ( index($f300->{content}, "\x1Fe") == -1 ) {
+	print STDERR "Field 300: add subfield \$e1 tekstiliite\n";
+	$f300->{content} .= " +\x1Fe1 tekstiliite";
+	return;
+    }
+
+    if ( index($f300->{content}, "\x1Fe1 tekstili") > -1 ) {
+	# No need to add the same $e content again
+	return;
+    }
+    # We should not get here...
+    print STDERR "ERROR\tReject record\tReason: unhandled 300\$e data\n";
+    &add_REP_skip($marc_record_ref);
+
 }
 
 sub process_description2language_notes($$$) {
@@ -1771,12 +1873,12 @@ sub process_description2language_notes($$$) {
 	$add_300e = 1;
     }
 	
-    # Try to detect if we missed something:
+    # Try to detect if we didn't process everything...
     if ( ${$description_ref} =~ /$esittelylehtinen/i ) {
 	#${$description_ref} =~ /\s/ &&
 	#${$description_ref} =~ /(?:esittelylehti|tekstilehti)/i ) {
-	print STDERR "WARNING\t'", ${$description_ref}, "'\n";
-	die();
+	print STDERR "ERROR\tReject record\tReason: esittelylehtinen '", ${$description_ref}, "'\n";
+	&add_REP_skip($marc_record_ref);
     }
     
     if ( $add_300e ) { # move to a separate_function
@@ -1787,72 +1889,78 @@ sub process_description2language_notes($$$) {
 
 
 
-sub process_description($$$$$) {
-    my ( $is_host, $prefix, $tempo_dataP, $marc_recordP, $description_ref, $field_511_content_ref) = @_;
+sub process_single_description($$$$) {
+    my ( $mess, $marc_record_ref, $is_host, $field_511_content_ref ) = @_;
 
-    if ( !defined(${$description_ref}) ) { return; }
-    
-    my $curr_description = ${$description_ref};
-    my @desc2 = split(/  +/, $curr_description);
-    if ( $#desc2 > 0 ) {
-	die();
-    }
-    for ( my $j=0; $j <= $#desc2; $j++ ) {
-	my $mess = $desc2[$j];
-	&description_cleanup(\$mess);
+    &description_cleanup(\$mess);
 	
-	if ( $mess =~ /lueteltu/ ) {
-	    print STDERR "DEBUG\tProcess 511 description\t'$mess'\n";
-	    if ( !$robust ) {
-		die();
+    if ( $mess =~ /lueteltu/ ) {
+	print STDERR "ERROR\tReject record\tReason:: 511 /lueteltu/ in '$mess'\n";
+	&add_REP_skip($marc_record_ref);
+    }
+    elsif ( $mess =~ /\S/ ) {
+	$mess = trim_all($mess);
+	#if ( $is_host && $mess =~ /(^|\. )(Esittelylehtinen|Tekstilehtinen) / ) {
+	if ( $mess =~ /(^|\. )(Esittelylehtinen|Tekstilehtinen) / ) {
+	    if ( $is_host ) {
+		# Something to field 300 as well?
+		add_marc_field($marc_record_ref, '500', "  \x1Fa$mess");
 	    }
 	}
-	elsif ( $mess =~ /\S/ ) {
-	    $mess = trim_all($mess);
-	    #if ( $is_host && $mess =~ /(^|\. )(Esittelylehtinen|Tekstilehtinen) / ) {
-	    if ( $mess =~ /(^|\. )(Esittelylehtinen|Tekstilehtinen) / ) {
-		if ( $is_host ) {
-		    # Something to field 300 as well?
-		    add_marc_field($marc_recordP, '500', "  \x1Fa$mess");
-		}
+	elsif ( $is_host ) {
+	    # Apparently KS wanted this Sekä: restriction back in
+	    # 2016-02-22
+	    $mess =~ s/([^\.])$/$1./;
+	    if ( $debug ) {
+		print STDERR "descriptions => 511\n";
 	    }
-	    elsif ( $is_host ) {
-		# Apparently KS wanted this Sekä: restriction back in
-		# 2016-02-22
-		$mess =~ s/([^\.])$/$1./;
-		if ( $debug ) {
-		    print STDERR "descriptions => 511\n";
-		}
-		    
-		if ( !${$field_511_content_ref} ) {
+	    
+	    if ( !${$field_511_content_ref} ) {
+		${$field_511_content_ref} = "0 \x1Fa$mess";
+	    }
+	    elsif ( ${$field_511_content_ref} =~ /\x1Fa([^\x1F]+)\.$/ ) {
+		my $a = $1;
+		if ( index($mess, $a) == 0 ) {
+		    # "Ville Laihala" vs "Ville Laihala ja Saattajat": latter wins
 		    ${$field_511_content_ref} = "0 \x1Fa$mess";
 		}
-		elsif ( ${$field_511_content_ref} =~ /\x1Fa([^\x1F]+)\.$/ ) {
-		    my $a = $1;
-		    if ( index($mess, $a) == 0 ) {
-			# "Ville Laihala" vs "Ville Laihala ja Saattajat": latter wins
-			${$field_511_content_ref} = "0 \x1Fa$mess";
-		    }
-		    else {
-			print STDERR "MULTI-511 #2. Mergable?\n  '", ${$field_511_content_ref}, "'\n  '0 \x1Fa$mess\n";
-			add_marc_field($marc_recordP, '511', "0 \x1Fa$mess"); # Store this as well
-		    }
-		    
-		}
 		else {
-		    die();
+		    print STDERR "MULTI-511 #2. Mergable?\n  '", ${$field_511_content_ref}, "'\n  '0 \x1Fa$mess\n";
+		    add_marc_field($marc_record_ref, '511', "0 \x1Fa$mess"); # Store this as well
 		}
 		
 	    }
-	    elsif ( $mess ) {
-		print STDERR "TODO or SKIP\tProcess description\t'$mess'\n";
+	    else {
+		print STDERR "ERROR\tReject record\tReason: 511 issues\n";
+		&add_REP_skip($marc_record_ref);
 	    }
+	    
+	}
+	elsif ( $mess ) {
+	    print STDERR "TODO or SKIP\tProcess description\t'$mess'\n";
 	}
     }
 }
 
+sub process_description($$$$$) {
+    my ( $is_host, $prefix, $tempo_dataP, $marc_record_ref, $description_ref, $field_511_content_ref) = @_;
+
+    if ( !defined(${$description_ref}) || !${$description_ref} ) { return; }
+
+    my $curr_description = ${$description_ref};
+    # print STDERR "Curr Desc: '$curr_description'\n";
+    my @desc2 = split(/  +/, $curr_description);
+    if ( scalar(@desc2) > 1 ) {
+	print STDERR "ERROR\tReject record\tReason: multidescription?\n";
+	&add_REP_skip($marc_record_ref);
+    }
+
+    &process_single_description($desc2[0], $marc_record_ref, $is_host, $field_511_content_ref);
+
+}
+
 sub process_duration($$$) {
-    my ( $prefix, $tempo_dataP, $marc_recordP) = @_;
+    my ( $prefix, $tempo_dataP, $marc_record_ref) = @_;
     my $path = "/$prefix/duration";
     my $duration = get_single_entry($path, $tempo_dataP);
     if ( !defined($duration) || !$duration ) {
@@ -1863,15 +1971,15 @@ sub process_duration($$$) {
     my $hhmmss = duration2hhmmss($duration); 
     # KS 6.5.2016: "Fono-tietueissa tulee nähtävästi joskus pelkkiä nollia
     # 306-kenttään." Korjaus: vaaditaan [1-9]
-    if ( defined($hhmmss) && $hhmmss =~ /[1-9]/ ) {
+    if ( defined($hhmmss) && $hhmmss =~ /[1-9]/ && $hhmmss =~ /^[0-9]{6}$/ ) {
 	if ( $debug ) {
 	    print STDERR "DEBUG\tConvert duration '$duration' to 306\$a '$hhmmss' (key: hhmmss)\n";
 	}
-	add_marc_field($marc_recordP, '306', "  \x1Fa".$hhmmss);
+	add_marc_field($marc_record_ref, '306', "  \x1Fa".$hhmmss);
     }
     else {
-	print STDERR "WARNING\tNot converting data/duration '$duration' to a 306 field\n";
-	if ( !$robust ) { die(); }
+	print STDERR "ERROR\tReject record\tReason: duration '$duration' does not convert to field 306\$a\n";
+	&add_REP_skip($marc_record_ref);
     }
 }
 
@@ -2005,7 +2113,12 @@ sub marc_add_date_and_place_of_an_event_note($$$$$) { # Add field 518:
     if ( !defined($date) && !defined($place) ) {
 	return;
     }
-    if ( !defined($other_information) ) { die(); }
+    
+    if ( !defined($other_information) ) {
+	print STDERR "ERROR\tReject record\tReason: no other information\n";
+	&add_REP_skip($marc_record_ref);
+    }
+    
     $other_information =~ s/([^:])$/$1:/; # add ':' if needed
     my $content = "  ";
     if ( defined($tracks) ) {
@@ -2016,7 +2129,8 @@ sub marc_add_date_and_place_of_an_event_note($$$$$) { # Add field 518:
 	# 200606 => kesäkuu 2006:
 	if ( $date =~ /^($yyyy_regexp)($mm_regexp)$/ ) {
 	    my $year = $1;
-	    my $month = &int2finnish_month_name($2);
+	    my $mm = $2;
+	    my $month = &int2finnish_month_name($mm, $marc_record_ref);
 	    $date = $month.' '.$year;
 	}
 	$content .= "\x1Fd".$date;
@@ -2056,53 +2170,55 @@ sub get_max_seen_disc_number($) {
 }
 
 sub process_host_item_entry($$$$) {
-    my ( $prefix, $tempo_dataP, $marc_recordP, $tempo_host_id) = @_;
-    if ( defined($tempo_host_id) ) {
-	my $g = get_single_entry("/$prefix/track_number", $tempo_dataP);
-	my $g2 = get_single_entry("/$prefix/custom/disc_number", $tempo_dataP);	
-	if ( defined($g) ) {
-	    $g =~ s/^0+//;
-	    if ( $g =~ /^\d+$/ ) { $g = "raita $g"; }
-	    if ( defined($g2) ) { $g = "levy $g2, ".$g; }
-	    $g = "\u$g";
-	}
-	my $punc = '';
+    my ( $prefix, $tempo_dataP, $marc_record_ref, $tempo_host_id) = @_;
+    if ( !defined($tempo_host_id) ) {
+	print STDERR "ERROR\tReject record\tReason: no host id for 773\$w\n";
+	&add_REP_skip($marc_record_ref);
+	return;
+    }
+    
+    my $g = get_single_entry("/$prefix/track_number", $tempo_dataP);
+    my $g2 = get_single_entry("/$prefix/custom/disc_number", $tempo_dataP);	
+    if ( defined($g) ) {
+	$g =~ s/^0+//;
+	if ( $g =~ /^\d+$/ ) { $g = "raita $g"; }
+	if ( defined($g2) ) { $g = "levy $g2, ".$g; }
+	$g = "\u$g";
+    }
+    my $punc = '';
 
-	my $content773 = "1 \x1F7nnjm";
-	if (defined($tempo_host_id) ) {
-	    $content773 .= "\x1Fw(FI-Yle)$tempo_host_id";
-	    if ( defined($t773{$tempo_host_id}) ) {
-		$content773 .= "\x1Ft".$t773{$tempo_host_id};
-		$content773 =~ s/\.$//;
-		$punc = ". -";
-	    }
-	    else {
-		# TODO: Fono used
-	    }
-	    if ( defined($d773{$tempo_host_id}) ) {
-		$content773 .= "$punc\x1Fd".$d773{$tempo_host_id};
-		$punc = ". -";
-	    }
-	    if ( defined($h773{$tempo_host_id}) ) {
-		$content773 .= "$punc\x1Fh".$h773{$tempo_host_id};
-		$punc = ". -";
-	    }
-	    if ( defined($o773{$tempo_host_id}) ) {
-		$content773 .= "$punc\x1Fo".$o773{$tempo_host_id};
-		$punc = ". -";
-	    }
+    my $content773 = "1 \x1F7nnjm";
 
-	    if ( defined($g) ) {
-		$content773 .= "$punc\x1Fg$g";
-	    }
-	    if ( $content773 =~ /\x1F[a-z]/ ) {
-		add_marc_field($marc_recordP, '773', $content773);
-	    }
-	}
+    $content773 .= "\x1Fw(FI-Yle)$tempo_host_id";
+    if ( defined($t773{$tempo_host_id}) ) {
+	$content773 .= "\x1Ft".$t773{$tempo_host_id};
+	$content773 =~ s/\.$//;
+	$punc = ". -";
     }
     else {
-	die();
+	# TODO: Fono used
     }
+    if ( defined($d773{$tempo_host_id}) ) {
+	$content773 .= "$punc\x1Fd".$d773{$tempo_host_id};
+	$punc = ". -";
+    }
+    if ( defined($h773{$tempo_host_id}) ) {
+	$content773 .= "$punc\x1Fh".$h773{$tempo_host_id};
+	$punc = ". -";
+    }
+    if ( defined($o773{$tempo_host_id}) ) {
+	$content773 .= "$punc\x1Fo".$o773{$tempo_host_id};
+	$punc = ". -";
+    }
+    
+    if ( defined($g) ) {
+	$content773 .= "$punc\x1Fg$g";
+    }
+
+    if ( $content773 =~ /\x1F[a-z]/ ) {
+	add_marc_field($marc_record_ref, '773', $content773);
+    }
+
 }
 
 
@@ -2154,7 +2270,6 @@ sub process_work_notes($$$$) {
 		if ( $new_content ne $f046->{content} ) { 
 		    print STDERR "WARNING\t046 change\t'", $f046->{content}, "' => '", $new_content, "'\n";
 		    $f046->{content} = $new_content;
-		    #die();
 		}
 		
 	    }
@@ -2218,7 +2333,7 @@ sub tempo_album_refs2tempo_album_ref($) {
     my ( $tempo_album_refs_ref ) = @_;
     
     my $tempo_album_ref = undef;
-    if ( $#{$tempo_album_refs_ref} > -1 ) {
+    if ( scalar(@{$tempo_album_refs_ref}) > 0 ) {
 	$tempo_album_ref = shift @{$tempo_album_refs_ref}; # remove from array!
 	# TM: No space in 028$a. See MELINDA-7748.
 	# NB! When have seen "3616846 777418"(which is EAN) here.
@@ -2304,12 +2419,14 @@ sub pair_person_and_band($$) {
     }
 }
 
-sub country2place_of_publication_production_or_execution($) {
-    my $country = shift;
+sub country2place_of_publication_production_or_execution($$) {
+    my ( $country, $marc_record_ref ) = @_;
     $country = normalize_location($country);
-    my $country_code = country2code($country);
+    my $country_code = country2code($country, $marc_record_ref);
     if ( !defined($country_code) || length($country_code) != 3 ) {
-	die();
+	print STDERR "ERROR\tReject record\tReason: country code '$country_code'\n";
+	&add_REP_skip($marc_record_ref);
+	return undef;
     }
     return $country_code;
 }
@@ -2358,7 +2475,7 @@ sub process_tempo_data2($$$$) {
     # ohjelmakäyttöön tarkoitettu julkaisematon musiikki. CD-levyille vastaava
     # sarja on CDY."
     # Mark them as deleted, so that they'll be skipped.
-    my $customID = &get_customID($tempo_data_ref, $prefix);
+    my $customID = &get_customID($tempo_data_ref, $prefix, $marc_record_ref);
     if ( defined($customID) && $customID =~ /^(CDY|DIGY)/ ) {
 	print STDERR "WARNING\tDELETE RECORD (Reason: $customID)\n";
 	${$marc_record_ref}->mark_record_as_deleted();
@@ -2393,8 +2510,13 @@ sub process_tempo_data2($$$$) {
     my $description = undef;
     if ( 1 ) {
 	my @descriptions = get_array_entry("/$prefix/descriptions", $tempo_data_ref);
-	# Sadly descriptions is defined as an array, even though it always contains but one line... Should we simplify code, by making it variable...
-	if ( scalar(@descriptions) > 1 ) { die(); }
+	# Sadly descriptions is defined as an array, even though it always
+	# contains but one line...
+	# Should we simplify code, by making it variable...
+	if ( scalar(@descriptions) > 1 ) {
+	    print STDERR "ERROR\tReject record\tReason: N of descriptions > 1\n";
+	    &add_REP_skip($marc_record_ref);
+	}
 	$description = $descriptions[0];
     }
     
@@ -2412,8 +2534,8 @@ sub process_tempo_data2($$$$) {
 	#print STDERR "DESC: $description\n";
 	$is_sacd = &is_sacd(\$description);
 	$description =~ s/(^| )(Soittovapaa|Julkaisu[ a-z]*) (\d+.)+$//; # TODO: Check whether TM is interested in these
-	$physical_description = &description2physical_description(\$description);
-	$desc_musicians = &description2musicians(\$description);
+	$physical_description = &description2physical_description(\$description, $marc_record_ref);
+	$desc_musicians = &description2musicians(\$description, $marc_record_ref);
 	$desc_additional_musicians = &description2additional_musicians(\$description);
     }
 	 
@@ -2429,7 +2551,7 @@ sub process_tempo_data2($$$$) {
 	if ( defined($desc_musicians) || defined($desc_additional_musicians) ) {
 	    die();
 	}
-	$desc_musicians = &description2musicians(\$artist_notes);
+	$desc_musicians = &description2musicians(\$artist_notes, $marc_record_ref);
 	$desc_additional_musicians = &description2additional_musicians(\$artist_notes);
 	
 	if ( $artist_notes =~ /\S/ ) {
@@ -2512,12 +2634,12 @@ sub process_tempo_data2($$$$) {
 
     fix_008_23($marc_record_ref);
     
-    my @languages = get_languages($prefix, $tempo_data_ref);
+    my @languages = get_languages($prefix, $tempo_data_ref, $marc_record_ref);
 
     my @ensembles = keyvals2vals(extract_keys("/$prefix/custom/ensemble", $tempo_data_ref));
 
     # UPDATE 008/37-37
-    my $f008_35_37 = &languages_to_008_35_37(\@languages, \@ensembles);
+    my $f008_35_37 = &languages_to_008_35_37(\@languages, \@ensembles, $marc_record_ref);
     ${$marc_record_ref}->update_controlfield_character_position('008', 35, $f008_35_37);
 
     ## 008/15-17 publication country
@@ -2543,16 +2665,14 @@ sub process_tempo_data2($$$$) {
     # Primary source: publication_country
     # (Fono has publication and republication country here)
     if ( defined($publication_country) ) {
-	$f008_15_17 = country2place_of_publication_production_or_execution($publication_country);
+	$f008_15_17 = country2place_of_publication_production_or_execution($publication_country, $marc_record_ref);
 	$f008_15_17_source = 'publication country';
-	#die();
     }
     # Secondary source: recording country (~ production country?)
     # As per T.M.: Don't use!
     if ( 0 && !defined($f008_15_17) && defined($recording_country) ) {
-	$f008_15_17 = country2place_of_publication_production_or_execution($recording_country);
+	$f008_15_17 = country2place_of_publication_production_or_execution($recording_country, $marc_record_ref);
 	$f008_15_17_source = 'recording country';
-	#die();
     }
 	
     if ( defined($f008_15_17) ) {
@@ -2561,7 +2681,6 @@ sub process_tempo_data2($$$$) {
 	}
 	${$marc_record_ref}->update_controlfield_character_position('008', 15, $f008_15_17);
 	$field008_15_17{$tempo_record_id} = $f008_15_17; # Cache me
-	#die();
     }
     elsif ( defined($tempo_host_id) ) { # Field 008/15-17 for comps:
 	if ( defined($field008_15_17{$tempo_host_id}) ) {
@@ -2573,9 +2692,9 @@ sub process_tempo_data2($$$$) {
     ${$marc_record_ref}->update_controlfield_character_position('008', 35, $f008_35_37);
     
     ### YEARS
-    my ( $publication_year, $publication_year_specifier ) = get_year("/$prefix/custom/publication_year", $tempo_data_ref);  # Fono's 222.
-    my ( $recording_year, $recording_year_specifier ) = get_year("/$prefix/custom/recording_year", $tempo_data_ref); # Fono's 112. Should be undef for hosts
-    my ( $rerelease_year, $rerelease_year_specifier ) = get_year("/$prefix/custom/re_release_year", $tempo_data_ref); # Fono's 224. Should be undef for hosts
+    my ( $publication_year, $publication_year_specifier ) = get_year("/$prefix/custom/publication_year", $tempo_data_ref, $marc_record_ref);  # Fono's 222.
+    my ( $recording_year, $recording_year_specifier ) = get_year("/$prefix/custom/recording_year", $tempo_data_ref, $marc_record_ref); # Fono's 112. Should be undef for hosts
+    my ( $rerelease_year, $rerelease_year_specifier ) = get_year("/$prefix/custom/re_release_year", $tempo_data_ref, $marc_record_ref); # Fono's 224. Should be undef for hosts
 
 
     if ( defined($publication_year) && defined($rerelease_year) ) {
@@ -2647,7 +2766,7 @@ sub process_tempo_data2($$$$) {
     # 028
     my $label = undef;
     if ( $is_host ) {
-	$label = &get_label($prefix, $tempo_data_ref);
+	$label = &get_label($prefix, $tempo_data_ref, $marc_record_ref);
 
 	#print STDERR "028028 '", join("', '", @tempo_album_refs), "'\n";
 
@@ -2664,7 +2783,10 @@ sub process_tempo_data2($$$$) {
 	    my $o773 = $label . " " . $tempo_album_ref;
 
 	    add_marc_field($marc_record_ref, '028', $content);	    
-	    if ( defined($o773{$tempo_record_id}) ) { die(); } # multi-$o?
+	    if ( defined($o773{$tempo_record_id}) ) {
+		print STDERR "ERROR\tReject record\tReason: multiple 773\$o '$o773'\n";
+		&add_REP_skip($marc_record_ref);
+	    }
 	    $o773{$tempo_record_id} = $o773;
 	}
     }
@@ -2707,7 +2829,10 @@ sub process_tempo_data2($$$$) {
 	if ( $debug ) {
 	    print STDERR "artist_notes => 511: $desc_musicians\n";
 	}
-	if ( $field_511_content ) { die(); }
+	if ( $field_511_content ) {
+	    print STDERR "ERROR\tReject record\tReason: desc musicians not empty '$desc_musicians'\n";
+	    &add_REP_skip($marc_record_ref);
+	}
 	$field_511_content = "0 \x1Fa$desc_musicians";
     }
 
@@ -2769,7 +2894,6 @@ sub process_tempo_data2($$$$) {
 	my $f338 = ${$marc_record_ref}->get_first_matching_field('338');
 	if ( defined($f338) && $f338->{content} =~ /\x1Fbcr\x1F/ ) {
 	    add_marc_field($marc_record_ref, '347', "  \x1Faäänitiedosto");
-	    #die($temp_record_id); # Remove after testing
 	}
     }
 
@@ -3059,7 +3183,8 @@ for ( my $i=0; $i <= $#input_files; $i++ ) {
     }
 
 
-    my $target_directory = &output_dir_or_error_dir2target_dir(\@marc_objects, $filename, $output_directory, $error_directory);
+    
+    my $target_directory = &output_dir_or_error_dir2target_dir(\@marc_objects, $filename, $output_directory, $error_directory); # Batch rejection is checked here:
     
     # Copy marc stuff 1st
     if ( $target_directory ) {
