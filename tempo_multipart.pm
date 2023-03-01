@@ -7,8 +7,8 @@ my $BIG_BAD_NUMBER = 666;
 sub get_multipart_id($) {
     my ( $marc_record_ref ) = @_;
     my @f799 = ${$marc_record_ref}->get_all_matching_fields('799', undef);
-    if ( $#f799 > 0 ) { die(); }
-    if ( $#f799 == -1 ) { return 0; }
+    if ( scalar(@f799) > 1 ) { die(); }
+    if ( scalar(@f799) == 0 ) { return 0; }
     if ( $f799[0]->{content} =~ /^  \x1Fw(.*)$/ ) {
 	return $1;
     }
@@ -25,13 +25,18 @@ sub g2score($) {
 	if ( $g =~ /^Levy ([1-9][0-9]*), raita ([1-9][0-9]*)$/ ) {
 	    return "$1.$2";
 	}
-	die();
+	die($g);
     }
-    die();
+    # Seen in 63f70a626f85d300305f9dc6.json. No track_number (->773$g) existed 
+    # die($g);
     return $BIG_BAD_NUMBER;
 }
     
 sub compare_773g {
+    my $a773 = $a->get_first_matching_field('773', undef);
+    my $b773 = $b->get_first_matching_field('773', undef);
+    print STDERR "A: ", $a773->toString(), "\n";
+    print STDERR "B: ", $b773->toString(), "\n";
     my $ag = g2score($a->get_first_matching_subfield('773', 'g'));
     my $bg = g2score($b->get_first_matching_subfield('773', 'g'));
     if ( $ag != $bg ) {
@@ -341,7 +346,12 @@ sub handle_multiparts($) {
 	# 0 parts of a multipart...
 	my $base_record_ref = get_base_record_ref($marc_record_array_ref, $multipart_id);
 
-	if ( !defined($base_record_ref) ) { die(); }
+	if ( !defined($base_record_ref) ) {
+	    # 2023-03-01: 63ef7b568d63ab0034970505.json did not contains this!
+	    my @records = @{$marc_record_array_ref};
+	    mark_record_as_rejected(\$records[0], "Multipart $multipart_id not found in IDs");
+	    next;
+	}
 	
 	# Get multiparts
 	my @records2merge = get_multipart_records_from_record_array_ref($marc_record_array_ref, $multipart_id);
