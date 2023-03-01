@@ -109,7 +109,7 @@ sub extract_pseudonym_from_full_name($) {
 }
 
 
-sub normalize_name($) {
+sub normalize_tempo_name($) {
     my ( $name ) = @_;
 
     # Pre- and decompose:
@@ -179,7 +179,7 @@ sub process_tempo_full_name($) {
     }
 
     
-    $name = &normalize_name($name);
+    $name = &normalize_tempo_name($name);
     $data{'name'} = $name;
     
     if ( $debug && 0 ) {
