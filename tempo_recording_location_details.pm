@@ -150,14 +150,18 @@ sub marc_create_field_033($$$) {
 	elsif ( $date_of_event =~ /^($yyyy_regexp$mm_regexp$dd_regexp)-($yyyy_regexp$mm_regexp$dd_regexp)$/ ) {
 	    my $start = $1;
 	    my $end = $2;
-	    if ( $end > $start && $end - $start > 1 ) {
-		my $content = "20\x1Fa${start}\x1Fa${end}";
-		add_marc_field($marc_record_ref, '033', $content);
+	    if ( $end > $start ) {
+		if ( $end - $start == 1 ) { # Two consecutive dates:
+		    my $content = "10\x1Fa${start}\x1Fa${end}";
+		    my $field = add_marc_field($marc_record_ref, '033', $content);
+		}
+		else {
+		    my $content = "20\x1Fa${start}\x1Fa${end}";
+		    add_marc_field($marc_record_ref, '033', $content);
+		}
 	    }
-	    else { # Two consecutive dates:
-		my $content = "10\x1Fa${start}\x1Fa${end}";
-		my $field = add_marc_field($marc_record_ref, '033', $content);
-		die($field->toString()); # Not seen yet, untested
+	    else { 
+		die();
 	    }
 
 	}
