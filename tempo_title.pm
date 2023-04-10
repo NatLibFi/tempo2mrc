@@ -68,14 +68,19 @@ sub extract_tassa($) {
     my $orig_title = ${$titleP};
     # "/tässä: jotainkin /" tai "/tässä: foo$/
 
-    if (${$titleP} =~ s/\/tässä:? *([^\/]+)($|\/)// ||
+    # 20230410: "(tässä: ...)" should come first as we have:
+    # 62bd2b86677ce600345ec0f3.json:"title": "Romansseja (tässä: Drei Romanzen, Kolme romanssia) oboelle /tässä KLARINETILLE/ ja pianolle op.94 /S/.",
+    if ( ${$titleP} =~ s/ \(tässä: ([^\(\)]+)\)(\.?$| )/$2/ ||
+	 ${$titleP} =~ s/\/tässä:? *([^\/]+)($|\/)// ) {
 	# Added pm 2022-09-22. Reason 627e1ff64b6d9c01ab9968d3
-	${$titleP} =~ s/ \(tässä: ([^\(\)]+)\)($| )/$2/ ) {
+	
 	my $tassa = $1;
 	$tassa = trim_ends($tassa);
+	${$titleP} =~ s/ \.$//;
 	if ( $debug ) {
 	    print STDERR "DEBUG\tExtracted tässä '$tassa' from title '$orig_title'\n";
 	}
+	#${$titleP} =~ s/ +$//;
 	return $tassa;
     }
     return undef;
