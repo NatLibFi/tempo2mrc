@@ -53,8 +53,10 @@ sub extract_incipit($) {
     my $titleP = shift();
     my $orig_title = ${$titleP};
     # Example: "(incipit string looks like this -)"
-    if ( ${$titleP} =~ s/\(([^\(\)]+) \-\)// ) {
+    if ( ${$titleP} =~ s/ \(([^\(\)]+) \-\)\././ || # hacky '.' handling
+	 ${$titleP} =~ s/\(([^\(\)]+) \-\)// ) {
 	my $incipit = $1;
+	
 	if ( $debug ) {
 	    print STDERR "DEBUG\tExtracted incipit '$incipit' from title '$orig_title'\n";
 	}
@@ -70,7 +72,7 @@ sub extract_tassa($) {
 
     # 20230410: "(tässä: ...)" should come first as we have:
     # 62bd2b86677ce600345ec0f3.json:"title": "Romansseja (tässä: Drei Romanzen, Kolme romanssia) oboelle /tässä KLARINETILLE/ ja pianolle op.94 /S/.",
-    if ( ${$titleP} =~ s/ \(tässä: ([^\(\)]+)\)(\.?$| )/$2/ ||
+    if ( ${$titleP} =~ s/ \(tässä: ([^\(\)]+)\)($|\.| )/$2/ ||
 	 ${$titleP} =~ s/\/tässä:? *([^\/]+)($|\/)// ) {
 	# Added pm 2022-09-22. Reason 627e1ff64b6d9c01ab9968d3
 	
