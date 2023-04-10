@@ -3133,6 +3133,37 @@ sub save_file($$) {
     return;
 }
 
+
+
+sub compare_two_records($$) {
+    my ( $a, $b ) = @_;
+    my $a773 = $a->get_first_matching_field_content('773');
+    my $b773 = $b->get_first_matching_field_content('773');
+
+    if ( $a773 =~ /\x1FgLevy (\d+)/i ) {
+	my $a_levy = $1;
+	if ( $b773 =~ /\x1FgLevy (\d+)/i ) {
+	    my $b_levy = $1;
+	    if ( $a_levy < $b_levy ) { return -1; }
+	    if ( $a_levy > $b_levy ) { return 1; }
+	}
+    }
+
+
+    if ( $a773 =~ /\x1Fg[^\x1F]*Raita (\d+)/i ) {
+	my $a_raita = $1;
+	if ( $b773 =~ /\x1Fg[^\x1F]*Raita (\d+)/ ) {
+	    my $b_raita = $1;
+	    if ( $a_raita < $b_raita ) { return -1; }
+	    if ( $a_raita > $b_raita ) { return 1; }
+	}
+    }
+
+    return 0;
+    
+}
+
+
 sub create_host_field_505($) {
     my ( $records_ref ) = @_;
     if ( $#{$records_ref} < 2 ) { return; }
@@ -3140,8 +3171,14 @@ sub create_host_field_505($) {
     my $f505 = $host->get_first_matching_field('505');
     if ( defined($f505) ) { return; } # No action required? (Added by multipart etc.?)
     my @songs;
-    for ( my $i=1; $i <= $#{$records_ref}; $i++ ) {
-	my $f245 = ${$records_ref}[$i]->get_first_matching_field('245');
+    my @comps = @{$records_ref};
+    shift @comps; # remove host 
+    @comps = sort { compare_two_records($a, $b) } @comps;
+    for (my $i=0; $i < scalar(@comps); $i++ ) {
+    #for ( my $i=1; $i <= $#{$records_ref}; $i++ ) {
+	
+	#my $f245 = ${$records_ref}[$i]->get_first_matching_field('245');
+	my $f245 = $comps[$i]->get_first_matching_field('245');
 	if ( defined($f245) && $f245->{content} =~ /\x1Fa([^\x1F]+)/ ) {
 	    my $song_name = $1;
 	    $song_name =~ s/\.?( +[=\-\/:])?$//;
