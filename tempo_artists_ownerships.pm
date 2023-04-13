@@ -427,16 +427,16 @@ sub get_tempo_authors($$$) {
 			    # We try to use 'yhtye' here as an indicator
 			    # of non-humanness... Didn't work out as humans
 			    # can have it as well...
-			    # Remove this here and in
-			    # educated_guess_is_person($)??
-			    if ( $val eq 'yhtye' ) {
+			    # However, yhtye:-duo has been ok so far..
+			    if ( $val =~ /^yhtye:-(duo|trio)$/ ) {
 				$authors{$id}{'yhtye'} = 1;
 			    }
 			    elsif ( $val eq 'johtaja' || $val eq 'kuoronjohtaja' || $val eq 'orkesterinjohtaja' ) {
 				$authors{$id}{'johtaja'} = $val;
 			    }
 			    elsif ( $val =~ /johtaja/ ) { die($val); }
-			    elsif ( $val eq 'ym' ) {
+			    # Humans can have 'yhtye' as instrument as well!!!
+			    elsif ( $val eq 'yhtye' || $val eq 'ym' ) {
 				# ignorable shit
 			    }
 			    elsif ( $debug ) {
@@ -678,43 +678,65 @@ sub tempo_is_definitely_human($) {
 }
 
 
-sub birth_and_death_year_mismatch($$$) {
-    my ( $birth_year, $death_year, $author_ref ) = @_;
+sub birth_and_death_year_mismatch($$$$$) {
+    my ( $name, $birth_year, $death_year, $author_ref, $message_ref ) = @_;
     # It's ok not to have this information:
     if ( !defined($birth_year) && !defined($death_year) ) { return 0; }
 
+    my $both = '';
+    if ( defined($birth_year) ) { $both .= $birth_year; }
+    $both .= '-';
+    if ( defined($death_year) ) { $both .= $death_year; }
+    
     my $f100 = ${$author_ref}->get_first_matching_field('100');
     if ( !defined($f100) ) { die(); return 0; }
     my $d = $f100->get_first_matching_subfield('d');
 
     if ( !defined($d) ) { return 0; }
+    $d =~ s/^noin //;
+    $d =~ s/[,\.]$//;
+    
+    if ( $both eq $d ) {
+	return 0;
+    }
 
-    if ( defined($birth_year) && defined($death_year) ) {
-	if ( "$birth_year-$death_year" eq $d ) {
+    # Note that warnings are printed immediately, and failures only if there are
+    # no accepted records!
+    if ( defined($birth_year) ) {
+	if ( $d eq "$birth_year-" ||
+	     ( !defined($death_year) && $d =~ /^$birth_year-/ ) ) {
+	    print STDERR "WARNING\tTEMPO $name vs ASTERI " . $f100->toString() . "\tYEAR MISMATCH: '$both' vs '$d'\n";
 	    return 0;
 	}
-	print STDERR "WARNING\t", $f100->toString(), "\tYEAR MISMATCH: '$birth_year-$death_year' vs '$d'\n";
+	${$message_ref} .= "FAILURE\tTEMPO $name vs ASTERI " . $f100->toString() . "\tYEAR MISMATCH: '$both' vs '$d'\n";
+	
 	return 1;
     }
 
-    if ( defined($birth_year) && !defined($death_year) ) {
-	if ( "$birth_year-" eq $d || index($d, "$birth_year-") == 0 ) {
-	    return 0;
-	}
-	print STDERR "WARNING\t", $f100->toString(), "\tYEAR MISMATCH: '$birth_year-' vs '$d'\n";
-	return 1;
+   
+    # if ( defined($death_year) ) { # implicit
+    if ( $d eq "-$death_year" ||
+	 ( !defined($birth_year) && $d =~ /-$death_year$/ ) ) {
+	print STDERR "WARNING\tTEMPO $name vs ASTERI " . $f100->toString() . "\tYEAR MISMATCH: '$both' vs '$d'\n";
+	return 0;
     }
-    die();
-    return 0;
+    ${$message_ref} .= "FAILURE\tTEMPO $name vs ASTERI " . $f100->toString() . "\tYEAR MISMATCH: '$both' vs '$d'\n";
+    return 1;
 }
 
 
 sub remove_birth_and_death_mismatches($$) {
     my ( $author_ref, $cand_records_ref ) = @_;
+    my $name = ${$author_ref}{'name'};
     my $birth_year = ${$author_ref}{'birth_year'};
     my $death_year = ${$author_ref}{'death_year'};
 
-    my @cands = grep { !birth_and_death_year_mismatch($birth_year, $death_year, \$_) } @{$cand_records_ref};
+    my $message = '';
+    my @cands = grep { !birth_and_death_year_mismatch($name, $birth_year, $death_year, \$_, \$message) } @{$cand_records_ref};
+    if ( scalar(@cands) == 0 ) {
+	print STDERR $message;
+    }
+    
     return @cands;
 }
 
@@ -799,9 +821,12 @@ sub educated_guess_is_person($) {
     }
 
     # Matias Sassali had this defined, so we can not use this, can we...
-    if ( 0 && defined($author{'yhtye'}) ) {
+    # 'yhtye:-duo' maps to 'yhtye' here. However, 'yhtye' does not :D
+    if ( defined($author{'yhtye'}) ) {
 	return 0;
     }
+
+
 
 
     
@@ -927,8 +952,9 @@ sub X00_ind1_and_subfield_a($) {
 
     # Single name: default to forename
     if ( $name !~ /\s/ ) {
-	if ( $name =~ /(heimo|la|lä|nen|salo|ström)$/ ) { die($name); }
-	return "1 \x1Fa$name";
+	# Only if we are sure that single name is a surname ind1=1.
+	# And here we don't know...
+	return "0 \x1Fa$name";
     }
 
     if ( $name =~ /^$etunimi_regexp $iso_kirjain$/ ) {
@@ -965,12 +991,31 @@ sub tempo_author_to_marc_field($$$) {
 
     my @cand_records = &name2auth_records($name);
     my @alt_cand_records = &alt_name2auth_records($name);
+    # Remove cand records from alt cand records:
+    if ( 1 ) {
+	my @cand_ids = map { $_->get_first_matching_field_content('001') } @cand_records;
+	if (scalar(@cand_ids) && scalar(@alt_cand_records) ) {
+	    my %cand_ids_hash;
+	    foreach my $cand_id ( @cand_ids ) { $cand_ids_hash{$cand_id} = 1; }
+	    my $n = scalar(@alt_cand_records);
+	    @alt_cand_records = grep { !defined($cand_ids_hash{$_->get_first_matching_field_content('001')}) } @alt_cand_records;
+	    my $n2 = scalar(@alt_cand_records);
+	    #if ( $n2 < $n ) {
+		print STDERR "Filter alt cands from $n to $n2\n";
+	    #}
+	}
+    }
+    
     my $n_cands = scalar(@cand_records);
     if ( $debug ) {
 	print STDERR "author ($name) => asteri: $n_cands cand(s) and ", scalar(@alt_cand_records), " alt cand(s) found.\n";
 	foreach my $cand_record ( @cand_records ) {
 	    my $id = $cand_record->get_first_matching_field('001');
 	    print STDERR "  ID: ", $id->{content}, "\n";
+	}
+	foreach my $cand_record ( @alt_cand_records ) {
+	    my $id = $cand_record->get_first_matching_field('001');
+	    print STDERR "  ALT ID: ", $id->{content}, "\n";
 	}
     }
     #if ( scalar(@cand_records) > 0 ) { die(); } # test: found something
@@ -980,17 +1025,18 @@ sub tempo_author_to_marc_field($$$) {
     
     my $must_be_human = tempo_is_definitely_human($author_ref);
     if ( $must_be_human ) {
-	# TODO: remove non-humans from @records;
+	# Remove non-humans from @cand_records:
 	@cand_records = grep { $_->get_first_matching_field('100') } @cand_records;
 	@cand_records = remove_birth_and_death_mismatches($author_ref, \@cand_records);
-
-	@alt_cand_records = grep { $_->get_first_matching_field('100') } @alt_cand_records;
-	@alt_cand_records = remove_birth_and_death_mismatches($author_ref, \@alt_cand_records);
+	if ( scalar(@cand_records) == 0 ) {
+	    @alt_cand_records = grep { $_->get_first_matching_field('100') } @alt_cand_records;
+	    @alt_cand_records = remove_birth_and_death_mismatches($author_ref, \@alt_cand_records);
+	}
     }
 
     if ( $n_cands != scalar(@cand_records) ) {
 	if ( $debug ) {
-	    print STDERR "  after filtering", scalar(@cand_records), " cand(s) found.\n";
+	    print STDERR "  after filtering ", scalar(@cand_records), " cand(s) found.\n";
 	}
 	$n_cands = scalar(@cand_records);
     }
