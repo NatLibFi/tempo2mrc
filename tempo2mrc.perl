@@ -653,7 +653,9 @@ sub description2musicians($$) {
 	return $musicians;
     }
     # Emil Brandqvist Trio. Muut jäsenet: Max Thornberg (kontrabasso). Tuomas Turunen (piano).
-    if ( ${$description_ref} =~ s/^(\S+ \S+) (Trio)\. Muut jäsenet: (.*)$// ) {
+    # FAIL: 'Max De Aloe Baltic Trio. Muut jäsenet: Niklas Winter (kitara), Jesper Bodilsen (kontrabasso).' # p.o. "Max De Aloe (Baltic Trio)" tma.
+    if ( ${$description_ref} =~ s/^(Max De Aloe) (Baltic Trio)\. Muut jäsenet: (.*)$// ||
+	${$description_ref} =~ s/^(\S+(?: \S+)+) (Trio)\. Muut jäsenet: (.*)$// ) {
 	my $musicians = "$1 $2: $1, $3";
 	normalize_musicians(\$musicians);
 	return $musicians;
