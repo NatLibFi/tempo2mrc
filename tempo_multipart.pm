@@ -128,6 +128,10 @@ sub list_multipart_records_for_505($) {
 	}
 	else {
 	    print STDERR "WARNING\tMultipart part: no name nor length!\n";
+	    my $f773g = $curr_record->get_first_matching_subfield('773', 'g');
+	    if ( defined($f773g) ) {
+		$list[$#list+1] = "[Nimeke puuttuu; $f773g]";
+	    }
 	}
     }
     if ( $#{$record_array_ref} != $#list ) {
