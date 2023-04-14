@@ -9,7 +9,7 @@ sub process_entry_as_aihepiiri_note($$) {
 
 sub map_term_to_yso_id($) {
     my ( $term ) = @_;
-    my $yso_id =  pref_label2unambiguous_id($term, 'yso/fin');
+    my $yso_id =  new_pref_label2unambiguous_id($term, 'yso', 'fin');
     if ( $yso_id ) { return ( $term, $yso_id ); }
     
     # Hacky singular => plural fallbacks by a cunning linguist.
@@ -19,7 +19,7 @@ sub map_term_to_yso_id($) {
 	 $term =~ s/tt([aeiouy]|ä|ö)$/t${1}t/ ||
 	 $term =~ s/s$/kset/ ||
 	 $term =~ s/([aeiouy]|ä|ö)$/${1}t/ ) {
-	$yso_id =  pref_label2unambiguous_id($term, 'yso/fin');
+	$yso_id =  new_pref_label2unambiguous_id($term, 'yso', 'fin');
 	if ( $yso_id ) { return ( $term, $yso_id ); }
     }
     
@@ -54,7 +54,7 @@ sub process_theme_geographic_name($$) {
     # Tempo's theme => Marc21 geogrqaphic name (fields 651 and 653)
     my ( $entry, $marc_record_ref ) = @_;
     $entry = main::normalize_location($entry);
-    my $yso_id =  pref_label2unambiguous_id($entry, 'yso-paikat/fin');
+    my $yso_id = new_pref_label2unambiguous_id($entry, 'yso-paikat', 'fin');
     # Try to convert Theme into an YSO term:
     if ( $yso_id ) {
 	my $content = " 7\x1Fa".$entry."\x1F2yso/fin\x1F0http:\/\/www.yso.fi\/onto\/yso\/".$yso_id;
