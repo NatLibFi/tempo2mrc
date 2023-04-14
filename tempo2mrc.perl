@@ -1906,6 +1906,7 @@ sub process_single_description($$$$) {
 	if ( $mess =~ /(^|\. )(Esittelylehtinen|Tekstilehtinen) / ) {
 	    if ( $is_host ) {
 		# Something to field 300 as well?
+		$mess =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
 		add_marc_field($marc_record_ref, '500', "  \x1Fa$mess");
 	    }
 	}
@@ -2282,6 +2283,7 @@ sub process_work_notes($$$$) {
 
 	if ( $work_notes =~ /\S/ ) {
 	    $work_notes = &trim_all($work_notes);
+	    $work_notes =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
 	    add_marc_field($marc_recordP, '500', "  \x1Fa".$work_notes);
 	}
     }
