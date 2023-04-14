@@ -247,6 +247,7 @@ sub process_title($$$$$$$$) {
 
     my $hakuapu = extract_hakuapu(\$tempo_title);
     if ( defined($hakuapu) ) {
+	$hakuapu =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
 	add_marc_field($marc_recordP, '500', "  \x1FaHakuapu: ".$hakuapu);
 	if ( !$robust ) {
 	    # Sanity check: can't have two hakuapus:
@@ -262,6 +263,7 @@ sub process_title($$$$$$$$) {
 	}
 	my $tassa = extract_tassa(\$analytical_title);
 	if ( defined($tassa) && length($tassa) ) {
+	    $tassa =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
 	    add_marc_field($marc_recordP, '500', "  \x1FaHakuapu: ".$tassa);
 	}
 
@@ -277,6 +279,7 @@ sub process_title($$$$$$$$) {
     
     while ( my $tassa = extract_tassa(\$tempo_title) ) {
 	if ( $tassa !~ /\.$/ ) { $tassa .= '.'; }
+	$tassa =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
 	add_marc_field($marc_recordP, '500', "  \x1FaNimekehuomautus: ".$tassa);
     }
     if ( !$robust ) {

@@ -555,6 +555,7 @@ sub remove_non_authors($$) {
 	}
 
 	if ( defined($content) ) {
+	    $content =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
 	    main::add_marc_field($marc_recordP, '500', $content);
 	    delete ${$authorsP}{$key};
 	}
