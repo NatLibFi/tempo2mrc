@@ -3226,6 +3226,12 @@ for ( my $i=0; $i <= $#input_files; $i++ ) {
 	$record->fix_245_ind1();
 	$record->fix_nonfiling_character_fields(); # 245 IND2 etc
 	$record->sort_fields();
+
+	# Remove my hacky multipart links:
+	my @fields = $record->get_all_matching_fields('799');
+	foreach my $field ( @fields ) {
+	    $record->remove_field($field);
+	}
     }
     
     if ( $debug ) {
