@@ -733,6 +733,9 @@ sub remove_birth_and_death_mismatches($$) {
 
     my $message = '';
     my @cands = grep { !birth_and_death_year_mismatch($name, $birth_year, $death_year, \$_, \$message) } @{$cand_records_ref};
+
+    # Print out pairing failures (we are only interested in them, if there
+    # ar no successful pairs):
     if ( scalar(@cands) == 0 ) {
 	print STDERR $message;
     }
