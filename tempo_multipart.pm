@@ -74,7 +74,7 @@ sub sort_multiparts_by_773g($) {
 sub human_readable_seconds($) {
     my ( $f306a ) = @_;
     $f306a =~ s/^0+(\d)/$1/; # leaves last 0 if needed
-    print STDERR "306: $f306a\n";
+    #print STDERR "306: $f306a\n";
     my $min = int($f306a/60);
     my $s = $f306a%60;
 
@@ -265,10 +265,11 @@ sub multipart_records2field_773_content($$) {
     # Remove old 773 field(s) from the surviving multipart:
     @f773 = ${$base_record_ref}->get_all_matching_fields('773', undef);
     foreach my $field ( @f773 ) {
-	print STDERR "REMOVE ", $field->toString(), "\n";
+	print STDERR "REMOVE FROM MULTIPART ", $field->toString(), "\n";
 	${$base_record_ref}->remove_field($field);
     }
     # Add new field:
+    print STDERR "ADD TO MULTIPART 'HOST': "; 
     add_marc_field($base_record_ref, '773', $f773_content);
 }
 
@@ -343,7 +344,6 @@ sub handle_multiparts($) {
 
     foreach my $multipart_id ( @mids ) {
 	print STDERR "Processing multipart id $multipart_id\n";
-
 
 	# Get base record (there should always be exactly one appr 035$a)...
 	# 638068df5a02ae06e623b24b is a corrupted multipart that returns

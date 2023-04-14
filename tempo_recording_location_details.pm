@@ -138,6 +138,7 @@ sub marc_create_field_033($$$) {
     
     if ( $other_event_information eq 'Konserttitaltiointi' ||
 	 $other_event_information eq 'Livetaltiointi' ) {
+	print STDERR "MCF033: '$date_of_event'\n";
 	if ( $date_of_event =~ /^(${yyyy_regexp})$/ ) {
 	    add_marc_field($marc_record_ref, '033', "00\x1Fa${date_of_event}----");
 	}
