@@ -746,7 +746,7 @@ sub marc21_record_sort($) {
 	      #print STDERR "SORT at $i: $tag1 '$val1' vs $tag2 '$val2'\n";
 	      if ( $val1 > $val2 ) {
 		  if ( $tag1 =~ /^\d+$/ && $tag2 =~ /^\d+$/ ) {
-		      print STDERR "SWAP at $i: $tag1 '$val1' '", $contents[$i], "' vs $tag2 '$val2' '", $contents[$i+1], "'\n";
+		      #print STDERR "SWAP at $i: $tag1 '$val1' '", $contents[$i], "' vs $tag2 '$val2' '", $contents[$i+1], "'\n";
 		      #print STDERR "SWAP FIELDS $val1 and $val2\n";
 		  }
 		  my $tmp = $tags[$i];
@@ -1999,15 +1999,7 @@ sub is_mu($) {
   return 1;
 }
 
-sub hae_musiikinlaji($) { 
-    my $record = $_[0];
-    if ( !is_mu($record) ) { return undef; }
-    my $f008 = marc21_record_get_field($record, '008', undef);
-    if ( defined($f008) && $f008 =~ /^.{18}(an|bd|bg|bl|bt|ca|cb|cc|cg|ch|cl|cn|co|cp|cr|cs|ct|cy|cz|df|dv|fg|fl|fm|ft|gm|hy|jz|mc|md|mi|mo|mp|mr|ms|mu|mz|nc|nn|op|or|ov|pg|pm|po|pp|pr|ps|pt|pv|rc|rd|rg|ri|rp|rq|sd|sg|sn|sp|st|su|sy|tc|tl|ts|uu|vi|vr|wz|za|xx|\|\|)/ ) {
-	return $1;
-    }
-    return undef;
-}
+
 
 sub is_electronic($) {
   my $record = $_[0];
@@ -2964,6 +2956,7 @@ sub unique_array2 {
     }
     return @unique;
 }
+
 
 1;
 

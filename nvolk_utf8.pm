@@ -31,7 +31,8 @@ sub unicode_fixes2($$) {
   if ( $str =~ s/Ä/Ä/g ) { $debug_stack[$#debug_stack+1] = "A-umlaut"; }
 
   if ( $str =~ s/Å/Å/g ) { $debug_stack[$#debug_stack+1] = "A-ring"; }
-
+  if ( $str =~ s/Â/Â/g ) { $debug_stack[$#debug_stack+1] = "A-creve"; }
+  
   if ( $str =~ s/ā/ā/g ) { $debug_stack[$#debug_stack+1] = "a-line"; }
 
   if ( $str =~s/ą/ą/g ) { $debug_stack[$#debug_stack+1] = "a-ogonek"; }

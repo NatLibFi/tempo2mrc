@@ -1,6 +1,6 @@
 # nvolk_marc_record.pm
 #
-# Copyright (c) 2021-2022 HY (KK)
+# Copyright (c) 2021-2023 HY (KK)
 # All Rights Reserved.
 #
 # Author(s): <nicholas.volk@helsinki.fi>
@@ -21,8 +21,11 @@
 
 use strict;
 use nvolk_marc21 qw(marc21_record2leader_directory_fields marc21_dir_and_fields2arrays xml_get_first_instance only_contents remove_data_from_xml trim encoding_fixes );
+#use nvolk_utf8 qw(html_escapes unicode_fixes2);
 use nvolk_utf8 qw(html_escapes);
- 
+
+
+require kk_marc21_field;
 #use Encode;
 
 
@@ -66,8 +69,8 @@ sub compare_two_marc_records($$$) {
     # 100. We won't notice if it ain't so. But good enough, I guess...
     foreach $curr_tag ( sort keys %seen_tags ) { # TODO: sorting of alphabetical fields
 	
-	my @fields1 = $record1->get_all_matching_fields($curr_tag, undef);
-	my @fields2 = $record2->get_all_matching_fields($curr_tag, undef);
+	my @fields1 = $record1->get_all_matching_fields($curr_tag);
+	my @fields2 = $record2->get_all_matching_fields($curr_tag);
 
 	# Remove identical rows from the end:
 	if ( $mode eq 'diff' ) {
@@ -116,32 +119,37 @@ sub compare_two_marc_records($$$) {
 
 package nvolk_marc_field;
 use strict;
+use nvolk_utf8 qw(html_escapes unicode_fixes2);
+
+require kk_marc21_field;
+
 
 sub new {
     my $class = shift;
     my $tag = shift;
     my $content = shift;
 
-    #print STDERR "NEWT '$tag'\n";
-    # Handle atypical input (Aleph sequential line):
+    # HACK: Handle atypical input (Aleph sequential line):
     if ( !defined($content) &&$tag =~ /^[0-9]{9} (...)(..) L (.*)$/ ) {
-	$tag = $1;
 	# NB! Don't send LDR here... It turns into a field...
-	my $indicators = $2;
-	my $subfields = $3;
-	my $new_content = '';
-	if ( $tag !~ /^00/ ) {
-	    $new_content .= $indicators;
-	}
-	# Convert legal subfields or all subfields:
-	if ( 1 ) {
-	    $subfields =~ s/\$\$([a-z0-9])/\x1F$1/g; # legal subfields
-	}
-	else {
-	    $subfields =~ s/\$\$/\x1F/g; # all subfields
-	}
-	$new_content .= $subfields;
-	$content = $new_content;
+	my $tmp_tag = $1;
+	$content = kk_marc21_field::sequentialToField($tag);
+	$tag = $tmp_tag;
+#	my $indicators = $2;
+#	my $subfields = $3;
+#	my $new_content = '';
+#	if ( $tag !~ /^00/ ) {
+#	    $new_content .= $indicators;
+#	}
+#	# Convert legal subfields or all subfields:
+#	if ( 1 ) {
+#	    $subfields =~ s/\$\$([a-z0-9])/\x1F$1/g; # legal subfields
+#	}
+#	else {
+#	    $subfields =~ s/\$\$/\x1F/g; # all subfields
+#	}
+#	$new_content .= $subfields;
+#	$content = $new_content;
     }
     
     if ( length($tag) != 3 ) { die("Illegal tag '$tag'"); }
@@ -159,6 +167,25 @@ sub get_first_matching_subfield($$) {
     }
     return undef;
 }
+
+sub fix_composition($) {
+    my ( $self ) = @_;
+    if ( $self->{tag} =~ /^[0-9]+$/ && index($self->{content}, "\x1F") > -1 ) {
+	my @subfields = split(/\x1F/, $self->{content});
+	my $threshold = scalar(@subfields);
+	for ( my $i=1; $i < $threshold; $i++ ) {
+	    $subfields[$i] = main::unicode_fixes2($subfields[$i], 1);
+
+	    # LRM /\x1FE2\x1F80\x1F8E/
+	    $subfields[$i] =~ s/ \x1FE2\x1F80\x1F8E/ /g && die();
+	    $subfields[$i] =~ s/\x1FE2\x1F80\x1F8E($| )/$1/g && die();
+	    $subfields[$i] =~ s/\x1FE2\x1F80\x1F8E//g && die();
+	    
+	}
+	$self->{content} = join("\x1F", @subfields);
+    }
+}
+
 
 sub get_first_matching_subfield_without_punctuation($$) {
     my ( $self, $subfield_code ) = @_;
@@ -229,7 +256,9 @@ sub is_identical($$) {
 	    #print STDERR "SUCCESS!\n";
 	    return 1;
 	}
-	#print STDERR "FAIL!\n";
+	if ( $self->{tag} =~ /^00/ ) {
+	    print STDERR "FAIL!\n  ", $self->toString(), " vs\n  ", $field->toString(), "\n";
+	}
     }
     return 0;
 }
@@ -297,14 +326,24 @@ sub remove_identical_subfields {
 
 
 
+sub has_kk_subfield9($) {
+    my ( $self ) = @_;
+    if ( $self->{content} =~ /\x1F9(FENNI|FIKKA|VIOLA)<KEEP>/ ) {
+	return 1;
+    }
+    return 0;
+}
+
 sub content_requires_replication($$) {
     my ( $self, $content ) = @_;
     if ( $content ) {
-	if ( $content =~ /\x1F9(FENNI|FIKKA|VIOLA)<KEEP>/ ) {
+	if ( $content =~ /\x1F9(FENNI|FIKKA|VIOLA)<KEEP>/ ||
+	     $self->has_kk_subfield9() ) {
 	    return 1;
 	}
-	# Added FI-Vapaa on 2021-12-16. Let's see how it works out...
-	if ( $content =~ /\x1F5(FENNI|FIKKA|FI-Vapaa|VIOLA)/ ) {
+	# Added FI-Vapaa on 2021-12-16:
+	if ( $content =~ /\x1F5(FENNI|FIKKA|FI-Vapaa|VIOLA)/ ||
+	     $self->{content} =~ /\x1F5(FENNI|FIKKA|FI-Vapaa|VIOLA)/ ) {
 	    return 1;
 	}
     }
@@ -313,9 +352,10 @@ sub content_requires_replication($$) {
 
 sub tag_requires_replication($$) {
     my ( $self, $tag ) = @_;
-    if ( !$tag ) {
+    if ( !$tag || $self->{tag} eq '901' ) {
 	return 0;
     }
+    
     if ( $self->content_requires_replication($self->{content}) ) {
 	return $self->{tag} ne $tag;
     }
@@ -328,10 +368,15 @@ sub field_requires_replication {
 
     # Removing dot from keep does not trigger requiredness
     # (A temporary hack that can be removed after cleaning Melinda.)
-    my $tmp = $self->{content};
-    if ( $tmp =~ s/<KEEP>\.($|\x1F)/<KEEP>$1/ &&
-	 #die("'$tmp' vs '$new_content'") &&
-	 $tmp eq $new_content ) {
+#    my $tmp = $self->{content};
+#    if ( $tmp =~ s/<KEEP>\.($|\x1F)/<KEEP>$1/ &&
+#	 #die("'$tmp' vs '$new_content'") &&
+#	 $tmp eq $new_content ) {
+#	return 0;
+#    }
+
+    # Content does not matter here:
+    if ( $self->{tag} eq '901' ) {
 	return 0;
     }
     
@@ -343,66 +388,19 @@ sub field_requires_replication {
 }
 
 
-
-
-## fix_punctuation() is currently just a collection of hacks.
-# Try to generalize at some point...
-sub fix_punctuation_773($) {
-    my ( $self ) = @_;
-
-    my @subfield_stack = split(/\x1F/, $self->{content});
-
-    for ( my $i=1; $i < $#subfield_stack; $i++ ) {
-	if ( $subfield_stack[$i] =~   /^[stbdhmkzxog]/ &&
-	     $subfield_stack[$i+1] =~ /^[stbdhmkzxogq]/ ) {
-	    if ( $subfield_stack[$i] !~ /\. -$/ ) {
-		$subfield_stack[$i] .= ". -";
-		$subfield_stack[$i] =~ s/ *[,\.\/;:=]\. -$/. -/;
-	    }
-	}
-    }
-
-    # Clean up the last (if broken by sorting):
-    if ( $subfield_stack[$#subfield_stack] !~ / (ill|[A-Z])\.$/ ) {
-	$subfield_stack[$#subfield_stack] =~ s/\. -$/./;
-    }
-
-    # Loppupisteohje: '.' only after $a. However, don't do it for abbrs:	
-    if ( $subfield_stack[$#subfield_stack] !~ / s.$/ ) {
-	$subfield_stack[$#subfield_stack] =~ s/^([^a][^\x1F]*([a-z]|å|ä|ö))\.$/$1/;
-    }
-	
-    my $content = join("\x1F", @subfield_stack);
-    $self->{content} = $content;
-}
-
-
-sub fix_punctuation {
-    my ( $self ) = @_;
-    # Skip, if not a datafield:
-    if ( index($self->{content}, "\x1F") == -1 ) { return; }
-
-    # TODO: figure out defaults
-    #print STDERR "TODO: implement field->punctuate_subfields()...\n";
-    if ( $self->{tag} eq '773' || $self->{tag} eq '973' ) {
-	$self->fix_punctuation_773();
-    }
-    
-}
-
-    
-my %default_subfield_order = ( '028' => 'baq',
-			       '100' => 'abcqde059',
-			       '110' => 'ae059',
-			       '600' => 'abcqde059',
-			       '610' => 'ae059',
-			       '700' => 'abcqde059',
-			       '710' => 'ae059',
+my $order773 = '67iatpsbdmhkxyzuogqw';
+my %default_subfield_order = ( '028' => '6baq',
+			       '100' => '6abcqde059',
+			       '110' => '6ae059',
+			       '600' => '6abcqde059',
+			       '610' => '6ae059',
+			       '700' => '6abcqde059',
+			       '710' => '6ae059',
 			       # 773$i, 773$b...
-			       '773' => '67wastpbdhmkzxorgq',
-			       '800' => 'abcqde059',
-			       '810' => 'ae059',
-			       '973' => '7watbdhmkzxorgq' );
+			       '773' => "$order773",
+			       '800' => '6abcqde059',
+			       '810' => '6ae059',
+			       '973' => "$order773" );
 
 
 sub swap_subfields {
@@ -425,6 +423,7 @@ sub swap_subfields {
     while ( $order =~ s/^(.)(.+)$/$2/ ) {
 	my $curr_subfield_code = $1;
 	my $other_subfield_codes = $2;
+	if ( index($other_subfield_codes, $curr_subfield_code) > -1 ) { die(); }
 	my $group = '['.$other_subfield_codes.']';
 	#print STDERR "  Trying to swap '$curr_subfield_code' and '$group'. . .\n";
 	while ( $self->{content} =~ s/(\x1F$group[^\x1F]*)(\x1F${curr_subfield_code}[^\x1F]*)/$2$1/ ) {
@@ -455,7 +454,9 @@ sub update_controlfield_character_position {
 	if ( $#args == 1 ) {
 	    substr($self->{content}, $args[0], length($args[1]), $args[1]);
 	    my $new_value = $self->toString();
-	    print STDERR " '$original_value' =>\n '$new_value'\n";
+	    if ( $new_value ne $original_value ) {
+		print STDERR " '$original_value' =>\n '$new_value'\n";
+	    }
 	}
 	else {
 	    die();
@@ -469,6 +470,8 @@ sub tag2val {
     my $tag = $self->{tag};
     my $content = $self->{content};
     # SORT ORDER...
+    if ( $tag eq 'LDR' ) { return 0; }
+
     if ( $tag =~ /^[1-9][0-9][0-9]$/ ) {
 	if ( $tag =~ /^(648|650|651|655)$/ ) {
 	    if ( $content =~ /^.([012356])/ ) {
@@ -515,8 +518,22 @@ sub tag2val {
 
     if ( $tag =~ /^0([1-9][0-9])$/ ) { return $1; }
     if ( $tag =~ /^00([1-9])$/ ) { return $1; }
-    if ( $tag eq 'LDR' ) { return 0; }
-    return 1000;
+
+    # Tail is aleph tags (excluding LDR), in randomish order, except
+    # LOW comes very last, and CAT is second last.
+    # Also CAT fields are sorted internally based on timestamp
+    if ( $tag eq 'CAT' ) { # The later the date, the later the field should come
+	my $base = '9998';
+	if ( $content =~ /\x1Fc(\d+)/ ) { 
+	    $base .= '.'.$1; # Add day
+	    if ( $content =~ /\x1Fh(\d+)/ ) { # hours
+		$base .= $1; # Add hour
+	    }
+	}
+	return $base;
+    }
+    if ( $tag eq 'LOW' ) { return 9999; }
+    return 1000; 
 }
 
 sub toMarcXML() {
@@ -596,6 +613,9 @@ sub toString($) {
     my $self = shift();
 
     my $string = $self->{tag} . "  ";
+
+    return $string . kk_marc21_field::fieldToString($self->{content});
+
     # Make content human readable:
     my $content = $self->{content};
     if ( $content =~ /\x1F/ ) { # has subfield(s) === non-control-field
@@ -636,7 +656,11 @@ sub new {
 	
     }
     elsif ( $data =~ /^</ ) {
-	if ( !$self->_process_marcxml($data) ) {
+	if ( $self->_is_marcxml($data) ) {
+	    
+	    $self->_process_marcxml($data);
+	}
+	else {
 	    #print STDERR "Record is not marcxml, trying OAI...\n";
 	    if ( !$self->_process_oai_marc($data) ) {
 		die();
@@ -722,6 +746,20 @@ sub new {
 
 
     return $self;
+}
+
+sub _is_marcxml($$) {
+    my ( $self, $xml ) = @_;
+    my $record = main::xml_get_first_instance($xml, 'record');
+    if ( !defined($record) ) {
+	return 0;
+    }
+    my $ldr = main::xml_get_first_instance($record, 'leader');
+    if ( !$ldr ) {
+	return 0;
+    }
+    
+    return 1;
 }
 
 sub _process_marcxml($$) {
@@ -1027,6 +1065,23 @@ sub get_first_matching_field($$) {
     return $self->{fields}[$index];
 }
 
+#sub get_first_matching_field_content($$) {
+#    my ( $self, $tag ) = @_;
+#
+#    my $index = $self->get_first_matching_field_index($tag);
+#    if ( $index == -1 ) { return undef; }
+#    my $field = $self->{fields}[$index];
+#    return $field->{content};
+#}
+
+sub get_first_matching_field_content($$) {
+    my ( $self, $tag ) = @_;
+    my $field = $self->get_first_matching_field($tag);
+    if ( !defined($field) ) { return undef; }
+    return $field->{content};
+}
+
+
 sub get_first_matching_subfield($$$) {
     my ( $self, $tag, $subfield_code ) = @_;
     # Shouldn't we get all fields here?
@@ -1069,29 +1124,16 @@ sub get_all_matching_subfields_without_punctuation($$$) {
 
 
 
-sub get_first_matching_field_content($$) {
-    my ( $self, $tag ) = @_;
-    my $field = $self->get_first_matching_field($tag);
-    if ( !defined($field) ) { return undef; }
-    return $field->{content};
-}
-
 sub get_all_matching_fields($$) {
     my ( $self, $tag ) = @_;
+    return grep { $_->{tag} =~ /^$tag$/ } @{$self->{fields}};
+}
 
-    my @arr;
 
-    my $fieldsP = $self->{fields};
-    my @fields = @$fieldsP;
-    #print STDERR "DEBUG: marc record has ", ($#fields+1), " fields.\n";
-    for ( my $i=0; $i <= $#fields; $i++ ) {
-	my $curr_field = $fields[$i];
-	if ( $curr_field->{tag} =~ /^$tag$/ ) {
-	    $arr[$#arr+1] = $curr_field;
-	}
-    }
-    
-    return @arr;
+sub get_all_matching_field_contents($$) {
+    my ( $self, $tag ) = @_;
+    my @fields = $self->get_all_matching_fields($tag);
+    return map { $_->{content} } @fields;
 }
 
 sub get_id($) {
@@ -1109,8 +1151,11 @@ sub remove_field($$) {
     my ( $self, $field ) = @_;
     #print STDERR "try to remove_field('", $field->toString(), "')...\n";
 
+
+    
     # NB! This last identical field is removed. So this does not necessarily
     # remove the $field object.
+    # Risky with $8 and $9 at least...
     for ( my $i = $#{$self->{fields}}; $i >= 0 ; $i-- ) {
 	# Remove first tag+content match (from the end):
 	if ( ${$self->{fields}}[$i]->is_identical($field) ) {
@@ -1123,29 +1168,30 @@ sub remove_field($$) {
     return 0;
 }
 
-sub remove_duplicates($$) {
-    my ( $self, $tag ) = @_;
-    my @fields = @{$self->{fields}};
-    my %seen;
-    for ( my $i = 0; $i <= $#fields ; $i++ ) {
-	my $curr_field = $fields[$i];
-	if ( $curr_field->{tag} eq $tag ) { # TODO: support regexp?
-	    my $str = $curr_field->toString();
-	
-	    if ( !defined($seen{$str}) ) {
-		$seen{$str} = 1;
-	    }
-	    else {
-		print STDERR "REMOVE '$str'\n";
-		print STDERR "REASON: Duplicate field\n";
-		$self->remove_field($curr_field);
-
-		#die(); # still untested
-	    }
-	}
-    }
-}
-
+#sub remove_duplicates($$) {
+#    my ( $self, $tag ) = @_;
+#    my @fields = @{$self->{fields}};
+#    my %seen;
+#    for ( my $i = 0; $i <= $#fields ; $i++ ) {
+#	my $curr_field = $fields[$i];
+#	# Skip $6-, $8- and $9-chains ('^' is related to $9 chain) 
+#	if ( $curr_field->{tag} =~ /^${tag}$/ && $curr_field->{content} !~ /\x1F(6|8|9\^)/ && $curr_field->{content} =~ /\^($|\x1F)/ ) {
+#	    my $str = $curr_field->toString();
+#	    if ( !defined($seen{$str}) ) {
+#		$seen{$str} = 1;
+#	    }
+#	    else {
+#		print STDERR "REMOVE '$str'\n";
+#		print STDERR "REASON: Duplicate field\n";
+#		$self->remove_field($curr_field);
+#
+#		#die(); # still untested
+#	    }
+#	}
+#    }
+#
+#    # TODO: Remove $6, $8 and $9 chains
+#}
 
 sub update_controlfield_character_position {
     my $self = shift;
@@ -1427,16 +1473,28 @@ sub replicate_field_to_LOW($$$) {
     return $self->add_field('901', $new_content);
 }
 
-sub swap_subfields($$) {
-    my ( $self, $tag, $subfield_codes ) = @_;
+sub swap_all_subfields($) {
+    my ( $self ) = @_;
 
-    my @fields = $self->get_all_matching_fields($tag);    
+    my @fields = @{$self->{fields}};
     foreach my $field ( @fields ) {
 	my $orig_value = $field->toString();
-	$field->swap_subfields($subfield_codes);
-	my $new_value = $field->toString();
-	if ( $orig_value ne $new_value ) {
-	    print STDERR "SORT SUBFIELDS:\n  '$orig_value' =>\n  '$new_value'\n";
+	my $subfield_codes = undef;
+	my $skip = 0;
+	if ( $self->is_mu() && $field->{tag} =~ /^[97]73$/ ) {
+	    # Field 773 subfield order depends on type of record. Music uses
+	    # different order from other materials, ffs.
+	    # We handle this anomaly here...
+
+	    $subfield_codes = '67wiatpsbdmhkxyzuogq';
+	    $skip = 1;
+	}
+	if ( !$skip ) {
+	    $field->swap_subfields($subfield_codes);
+	    my $new_value = $field->toString();
+	    if ( $orig_value ne $new_value ) {
+		print STDERR "SORT SUBFIELDS:\n  '$orig_value' =>\n  '$new_value'\n";
+	    }
 	}
     }
 }
@@ -1550,6 +1608,19 @@ sub is_bk($) {
     return 0;
 }
 
+sub is_audiobook($) { # definition from MELKEHITYS-1975, might not be perfect
+    my ( $self ) = @_;
+    if ( $self->{leader} !~ /^.{6}i/ ) {
+	return 0;
+    }
+    my @f336 = $self->get_all_matching_field_contents('336');
+    if ( grep(/\x1Fbspw\x1F2rdacontent/, @f336) ) {
+	die();
+	return 1;
+    }
+    return 0;
+}
+
 sub is_cr($) { # countinuing resource, serial
     my ( $self ) = @_;
   if ( $self->{leader} =~ /^......[at][bis]/ ) { return 1; }
@@ -1626,7 +1697,7 @@ sub is_kk_record($) {
     my $self = shift;
     my $f040 = 0;
     my $f042 = 0;
-    my $LOW = 1;
+    my $LOW = 0;
 
     my $fieldsP = $self->{fields};
     my @fields = @$fieldsP;
@@ -1640,7 +1711,7 @@ sub is_kk_record($) {
 #	}
 #	if ( $field->{tag} eq '042' ) {
 #	    if ( $field->{content} =~ /\x1Fafinb/ ) {
-#		$f040 = 1;
+#		$f042 = 1;
 #	    }		    
 #	}
 	if ( $field->{tag} eq 'LOW' ) {
@@ -1650,7 +1721,7 @@ sub is_kk_record($) {
 	}
     }
     
-    return $f040 + $f040 + $f042;    
+    return $f040 + $f042 + $LOW;    
 }
 
 sub is_prepublication($) {
@@ -1790,8 +1861,12 @@ sub get_all_host_ids($) {
 
 sub belongs_to_arto($) {
     my ( $self ) = @_;
-    if ( $self->containsSubfieldWithValue('960', 'a', 'ARTO') ) {
-	return 1;
+    my @f960 = $self->get_all_matching_field_contents('960');
+    foreach my $content ( @f960 ) {
+	if ( $content =~ /\x1FaARTO($|\x1F)/ ||
+	     $content eq "  \x1FaAleksi\x1F5ARTO") {
+	    return 1;
+	}
     }
     return 0;
 }
@@ -1945,9 +2020,44 @@ sub get_unprocessed_place_of_publication($) {
     if ( defined($place_of_pub) && $place_of_pub =~ /\S/ ) {
 	return $place_of_pub;
     }
-    
+        
+    return undef;
+}
 
-    
+sub find_subfield6_pair($$) {
+    my ( $self, $field ) = @_;
+    my ( $tag, $index ) = kk_marc21_field::getTagAndIndex($field->{content});
+
+    if ( !defined($tag) || $index eq '00' ) { return undef; }
+	
+    if ( $field->{tag} ne '880' && $tag ne '880' ) {
+	die(); # Breakpoint for testing
+	return undef; 
+    }
+    if ( $field->{tag} eq '880' && $tag eq '880' ) {
+	die(); # Breakpoint for testing
+	return undef;
+    }
+
+    my @cand_fields = $self->get_all_matching_fields($tag);
+
+    my @hits = ();
+    for my $cand_pair ( @cand_fields ) {
+	my ( $cand_tag, $cand_index ) = kk_marc21_field::getTagAndIndex($cand_pair->{content});
+	if ( $cand_tag eq $field->{tag} && $index eq $cand_index ) {
+	    # return $cand_pair; # nah, check amount as well, since Helmet is crappy
+	    push(@hits, $cand_pair);
+	}
+    }
+    if ( scalar(@hits) == 0 ) {
+	return undef;
+    }
+    if ( scalar(@hits) == 1 ) {
+	return $hits[0];
+    }
+    # This means there's an error in the record.
+    # I have die() here, so that record can be fixed manually...
+    die(); 
     return undef;
 }
 
@@ -1968,6 +2078,15 @@ sub get_place_of_publication() {
 
     return undef;
 }
+
+sub fix_composition($) {
+    my ( $self ) = @_;
+    my @fields = @{$self->{fields}};
+    foreach my $field ( @fields ) {
+	$field->fix_composition();
+    }
+}
+    
 
 sub get_publication_year_008($) {
     my ( $self ) = @_;
