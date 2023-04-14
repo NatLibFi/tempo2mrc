@@ -252,11 +252,11 @@ sub get_year($$$) {
 	    if ( !defined($specifier) ) {
 		return ( $y1, $y2 );
 	    }
-	    return ( $val, $specifier ); # will this cause issues
+	    return ( $val, $specifier ); # will this cause issues?
 	}
 	# Seen once:
 	if ( $val =~ /^($yyyy_regexp) ($yyyy_regexp)/ && $1 < $2 ) {
-	    return ( $val, $specifier ); # will this cause issues
+	    return ( $val, $specifier ); # will this cause issues?
 	}
 	# Can't handle/guess:
 	if ( $val =~ /^(20.)$/ ) {
@@ -911,7 +911,7 @@ sub normalize_location($) {
     # SUOMI => Suomi
     my $tmp = &tempo_ucfirst_lcrest($location);
     if ( $tmp ne $location ) {
-	if ( label2ids($tmp, 'yso-paikat/fin') ) {
+	if ( new_label2ids($tmp, 'yso-paikat', 'fin', 'pref') ) {
 	    print STDERR "LOC: $location => $tmp!\n";
 	    return $tmp;
 	}
@@ -1492,7 +1492,7 @@ sub recursively_process_tempo($$) {
 	    $output .= $path . " = NULL\n";
 	}
 	else {
-	    print STDERR "PROCESSING $path = '$jsonP'\n";
+	    #print STDERR "PROCESSING $path = '$jsonP'\n";
 	    $output .= $path . " = '$jsonP'\n";
 	}
     }
@@ -1701,7 +1701,7 @@ sub process_composition_country($$$) {
 	
 	my $composition_country = normalize_location($original_composition_country);
 	
-	my $yso_paikat_id =  pref_label2unambiguous_id($composition_country, 'yso-paikat/fin');
+	my $yso_paikat_id =  new_pref_label2unambiguous_id($composition_country, 'yso-paikat', 'fin');
 	my $entry = "  \x1Fg".$composition_country;
 	if ( $yso_paikat_id ) {
 	    $entry .= "\x1F2yso/fin\x1F0http:\/\/www.yso.fi\/onto\/yso\/".$yso_paikat_id;
@@ -2059,7 +2059,7 @@ sub genre2slm($$) {
     $genre = normalize_genre($genre);
     
     # All entries get their SLM/655 mappings as well:
-    my $slm_id =  pref_label2unambiguous_id($genre, 'slm/fin');
+    my $slm_id =  new_pref_label2unambiguous_id($genre, 'slm', 'fin');
     if ( defined($slm_id) ) {
 	add_marc_field($marc_record_ref, '655', " 7\x1Fa".$genre."\x1F2slm/fin\x1F0http:\/\/urn.fi\/URN:NBN:fi:au:slm:$slm_id");
     }
@@ -2234,12 +2234,12 @@ sub process_origin($$$) {
 	$origin =~ s/^kansalliset vähemmistöt:\s*//i;
 	$origin =~ s/ \(\S+\)$//; # Seen only "(Suomi)" and "(Ruotsi)" so far
 	# Now we should have only the term left.
-	my $yso_id =  pref_label2unambiguous_id($origin, 'yso/fin');
+	my $yso_id =  new_pref_label2unambiguous_id($origin, 'yso', 'fin');
 	if ( !$yso_id && $origin =~ /nen$/ ) {
 	    my $tmp = $origin;
 	    $tmp =~ s/nen$/set/;
 	    print STDERR "NB\tOrigin: Trying '$tmp' as an alternative for '$tmp'/'$origin'\n";
-	    $yso_id = pref_label2unambiguous_id($tmp, 'yso/fin');
+	    $yso_id = new_pref_label2unambiguous_id($tmp, 'yso', 'fin');
 	}
 	if ( !$yso_id ) {
 	    my $msg = "Failed to handle origin: '$origin'/'$original_origin'\n";
@@ -2926,11 +2926,25 @@ sub process_tempo_data2($$$$) {
     # 033:
     if (${$marc_record_ref}->get_first_matching_field_index('033') == -1 ) {
 	if ( defined($recording_year) ) {
-	    if ( !$recording_year_specifier ) {
-		add_marc_field($marc_record_ref, '033', "00\x1Fa${recording_year}----");
+	    print STDERR "RECYEAR: '$recording_year'\n";
+	    if ( !$recording_year_specifier || $recording_year_specifier eq 'noin' ) {
+		if ( $recording_year =~ /^\d+$/ ) {
+		    add_marc_field($marc_record_ref, '033', "00\x1Fa${recording_year}----");
+		}
+		elsif ( $recording_year =~ /^(\d+) (\d+)/ ) {
+		    my $yy1 = $1;
+		    my $yy2 = $2;
+		    add_marc_field($marc_record_ref, '033', "10\x1Fa${yy1}----\x1Fa${yy2}----");
+		}
+		else {
+		    die("$recording_year");
+		}
 	    }
 	    elsif ( $recording_year_specifier =~ /^\d+$/ ) {
 		add_marc_field($marc_record_ref, '033', "20\x1Fa${recording_year}----\x1Fa${recording_year_specifier}----");	    
+	    }
+	    else {
+		print STDERR "WARNING! SKIP '$recording_year $recording_year_specifier'\n";
 	    }
 	}
     }
@@ -2994,7 +3008,7 @@ sub process_tempo_data2($$$$) {
 	} while ( $#song_data > -1 );
     }
 
-    my $header = " FINAL ".($is_host ? 'HOST' : 'NON-HOST' );
+    my $header = " UNPROCESSED ".($is_host ? 'HOST' : 'NON-HOST' );
     print STDERR "REMAINING LEAF DATA AFTER PROCESSING:\n$header\t", join("\n$header\t", @{$tempo_data_ref}), "\n";    
     
 
