@@ -148,8 +148,8 @@ sub extract_keys($$) {
     if ( 0 ) {
 	my @results = grep { index($_, $key) == 0 } @{$tempo_dataP};
 	if ( $#results > -1 ) { # remove results from tempo data:
-	    print STDERR "EK2 '$key' in\n";
-	    print STDERR join("\n", @results), "\n";
+	    #print STDERR "EK2 '$key' in\n";
+	    #print STDERR join("\n", @results), "\n";
 	    my $n = $#{$tempo_dataP};
 	    @{$tempo_dataP} = grep { index($_, $key) != 0 } @{$tempo_dataP};
 	    #@{$tempo_dataP} = grep { index($_, $key.'[') != 0 || index($_, $key.' ') != 0 } @{$tempo_dataP};
@@ -161,8 +161,8 @@ sub extract_keys($$) {
 
     my @results = grep { key_match($_, $key) } @{$tempo_dataP};
     if ( $#results > -1 ) { # remove results from tempo data:
-	print STDERR "EK2 '$key' in\n";
-	print STDERR join("\n", @results), "\n";
+	#print STDERR "EK2 '$key' in\n";
+	#print STDERR join("\n", @results), "\n";
 	my $n = $#{$tempo_dataP};
 	@{$tempo_dataP} = grep { !key_match($_, $key) } @{$tempo_dataP};
 	my $n2 = $#{$tempo_dataP};
