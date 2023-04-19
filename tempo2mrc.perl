@@ -1028,12 +1028,14 @@ sub process_performer_note($$$$$) {
     for ( my $i=0; $i <= $#results; $i++ ) {
 	my $line = $results[$i];
 
-	if ( $line =~ /^\Q$prefix2\E\[(\d+)\]\/artist\/full_name = 'Nimeämätön'$/ ) {
-	    $skip_nimeamaton = 1;
-	}
-	elsif ( $line =~ /^\Q$prefix2\E\[(\d+)\]\/artist\/full_name = '(.*)'$/ ) {
+	if ( $line =~ /^\Q$prefix2\E\[(\d+)\]\/artist\/full_name = '(.*)'$/ ) {
 	    my $index = $1;
 	    my $name = $2;
+	    if ( not_really_a_name($name) ) { # $name eq 'Nimeämätön' ) {
+		$skip_nimeamaton = 1;
+		next;
+	    }
+
 	    $skip_nimeamaton = 0;
 	    $name =~ s/ \(.*\)$//; # remove tempo tarke etc.
 	    if ( defined($name[$index]) ) {
