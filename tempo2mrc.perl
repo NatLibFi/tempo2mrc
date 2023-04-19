@@ -2188,6 +2188,12 @@ sub process_host_item_entry($$$$) {
 	if ( defined($g2) ) { $g = "levy $g2, ".$g; }
 	$g = "\u$g";
     }
+    elsif ( defined($g) ) {
+	die();
+    }
+    else {
+	# "CustomID" can contains similar info: "CD-140480-1:06"
+    }
     my $punc = '';
 
     my $content773 = "1 \x1F7nnjm";
@@ -3153,32 +3159,40 @@ sub save_file($$) {
 
 
 
+sub get_levy($) {
+    my ( $field_content ) = @_;
+    if ( $field_content =~ /\x1FgLevy (\d+)/ ) {
+	return $1;
+    }
+    # Default:
+    return 1;
+}
+
+sub get_raita($) {
+    my ( $field_content ) = @_;
+    if ( $field_content =~ /\x1Fg[^\x1F]*?Raita (\d+)/i ) {
+	return $1;
+    }
+    # Default (should this be a big bad number?):
+    return 1;
+}
+
 sub compare_two_records($$) {
     my ( $a, $b ) = @_;
     my $a773 = $a->get_first_matching_field_content('773');
     my $b773 = $b->get_first_matching_field_content('773');
 
-    if ( $a773 =~ /\x1FgLevy (\d+)/i ) {
-	my $a_levy = $1;
-	if ( $b773 =~ /\x1FgLevy (\d+)/i ) {
-	    my $b_levy = $1;
-	    if ( $a_levy < $b_levy ) { return -1; }
-	    if ( $a_levy > $b_levy ) { return 1; }
-	}
-    }
+    my $a_levy = &get_levy($a773);
+    my $b_levy = &get_levy($b773);
+    if ( $a_levy < $b_levy ) { return -1; }
+    if ( $a_levy > $b_levy ) { return 1; }
 
-
-    if ( $a773 =~ /\x1Fg[^\x1F]*Raita (\d+)/i ) {
-	my $a_raita = $1;
-	if ( $b773 =~ /\x1Fg[^\x1F]*Raita (\d+)/ ) {
-	    my $b_raita = $1;
-	    if ( $a_raita < $b_raita ) { return -1; }
-	    if ( $a_raita > $b_raita ) { return 1; }
-	}
-    }
+    my $a_raita = &get_raita($a773);
+    my $b_raita = &get_raita($b773);
+    if ( $a_raita < $b_raita ) { return -1; }
+    if ( $a_raita > $b_raita ) { return 1; }
 
     return 0;
-    
 }
 
 
@@ -3190,15 +3204,19 @@ sub create_host_field_505($) {
     if ( defined($f505) ) { return; } # No action required? (Added by multipart etc.?)
     my @songs;
     my @comps = @{$records_ref};
-    shift @comps; # remove host 
+    shift @comps; # remove host from array
     @comps = sort { compare_two_records($a, $b) } @comps;
     for (my $i=0; $i < scalar(@comps); $i++ ) {
     #for ( my $i=1; $i <= $#{$records_ref}; $i++ ) {
 	
 	#my $f245 = ${$records_ref}[$i]->get_first_matching_field('245');
-	my $f245 = $comps[$i]->get_first_matching_field('245');
-	if ( defined($f245) && $f245->{content} =~ /\x1Fa([^\x1F]+)/ ) {
+	my $f245 = $comps[$i]->get_first_matching_field_content('245');
+
+	if ( defined($f245) && $f245 =~ /\x1Fa([^\x1F]+)/ ) {
 	    my $song_name = $1;
+	    my $f773 = $comps[$i]->get_first_matching_field_content('773');
+	    print STDERR "SORTED: ", ($i+1), "=", $song_name, "\t$f773\n";
+
 	    $song_name =~ s/\.?( +[=\-\/:])?$//;
 	    $songs[$#songs+1] = $song_name;
 	}
