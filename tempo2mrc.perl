@@ -3159,7 +3159,7 @@ sub save_file($$) {
 
 
 
-sub get_levy($) {
+sub get_comp_levy($) {
     my ( $field_content ) = @_;
     if ( $field_content =~ /\x1FgLevy (\d+)/ ) {
 	return $1;
@@ -3168,7 +3168,7 @@ sub get_levy($) {
     return 1;
 }
 
-sub get_raita($) {
+sub get_comp_raita($) {
     my ( $field_content ) = @_;
     if ( $field_content =~ /\x1Fg[^\x1F]*?Raita (\d+)/i ) {
 	return $1;
@@ -3182,13 +3182,13 @@ sub compare_two_records($$) {
     my $a773 = $a->get_first_matching_field_content('773');
     my $b773 = $b->get_first_matching_field_content('773');
 
-    my $a_levy = &get_levy($a773);
-    my $b_levy = &get_levy($b773);
+    my $a_levy = &get_comp_levy($a773);
+    my $b_levy = &get_comp_levy($b773);
     if ( $a_levy < $b_levy ) { return -1; }
     if ( $a_levy > $b_levy ) { return 1; }
 
-    my $a_raita = &get_raita($a773);
-    my $b_raita = &get_raita($b773);
+    my $a_raita = &get_comp_raita($a773);
+    my $b_raita = &get_comp_raita($b773);
     if ( $a_raita < $b_raita ) { return -1; }
     if ( $a_raita > $b_raita ) { return 1; }
 
@@ -3196,16 +3196,54 @@ sub compare_two_records($$) {
 }
 
 
+
+sub fix_300a($) {
+    # Reported by T.M. via Slack on 2023-04-17:
+    # Sometimes the host does not contain the number of CDs etc.
+    # By default we use 300$a 1 CD-äänilevy there.
+    # However, we can derive that information from comps...
+    my ( $records_ref ) = @_;
+    my @comps = @{$records_ref};
+    if ( scalar(@comps) < 2 ) { return; }
+    my $host = shift @comps; # remove host from comp array
+    my $max_levy = 1;
+    foreach my $curr_comp ( @comps ) {
+	my $f773 = $curr_comp->get_first_matching_field_content('773');
+	my $levy = &get_comp_levy($f773);
+	if ( $levy > $max_levy ) { $max_levy = $levy; }
+    }
+    
+    if ( $max_levy > 1 ) {
+	my $host300 = $host->get_first_matching_field('300');
+	if ( $host300->{content} =~ /\x1Fa(\d+)/ ) {
+	    my $host_levy = $1;
+	    if ( $host_levy < $max_levy ) {
+		print STDERR "FIX300\$a:\n  ", $host300->toString(), " =>\n";
+		if ( $host300->{content} =~ s/\x1Fa\d+ (C-kasettia|CD-äänilevyä|äänilevyä)/\x1Fa$max_levy ${1}/ ||
+		     $host300->{content} =~ s/\x1Fa1 (CD-äänilevy)/\x1Fa$max_levy ${1}ä/ ) {
+		    print STDERR "  ", $host300->toString(), "\n";
+		    return;
+		}
+		die($host300);
+	    }
+	}
+    }
+}
+
+    
 sub create_host_field_505($) {
     my ( $records_ref ) = @_;
-    if ( $#{$records_ref} < 2 ) { return; }
-    my $host = (@{$records_ref})[0];
-    my $f505 = $host->get_first_matching_field('505');
-    if ( defined($f505) ) { return; } # No action required? (Added by multipart etc.?)
-    my @songs;
     my @comps = @{$records_ref};
-    shift @comps; # remove host from array
+    if ( scalar(@comps) < 2 ) { return; }
+    my $host = shift @comps; # remove host from comp array
+
+    my $f505 = $host->get_first_matching_field('505');
+    if ( defined($f505) ) { return; } # No action required? Does this happen? (Added by multipart etc.?)
+
+    my @songs;
+
     @comps = sort { compare_two_records($a, $b) } @comps;
+
     for (my $i=0; $i < scalar(@comps); $i++ ) {
     #for ( my $i=1; $i <= $#{$records_ref}; $i++ ) {
 	
@@ -3237,6 +3275,7 @@ for ( my $i=0; $i <= $#input_files; $i++ ) {
     my @marc_objects = &process_tempo_file($filename);
 
 
+    fix_300a(\@marc_objects);
     create_host_field_505(\@marc_objects);
 
     # Final fixes: set certain indicators and sort fields:
