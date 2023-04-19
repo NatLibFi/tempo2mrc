@@ -1107,7 +1107,9 @@ sub tempo_author_to_marc_field($$$) {
     my @authors_functions = get_functions(\%author);
     if ( scalar(@authors_functions) > 0 ) {
 	my $authors_functionstr = join(",\x1Fe", @authors_functions);
-	$content .= ','; # NB! TODO "$d 1999-" -> omit ','
+	if ( $content !~ /-$/ ) {
+	    $content .= ','; # NB! TODO "$d 1999-" -> omit ','
+	}
 	$content .= "\x1Fe".$authors_functionstr;
     }
     $content .= "."; # NB! TODO "$d 1999-" -> omit '.'
