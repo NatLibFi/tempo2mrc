@@ -981,40 +981,12 @@ sub get_label($$$) {
 }
 
 
-my %normalize_instrument_hash = (
-    'kamariyhtye:-jousikvartetti' => 'soitinyhtye',
-    'kamariyhtye:-puhallinkvartetti' => 'puhallinyhtye',
-    'kamariyhtye:-puhallinkvintetti' => 'puhallinyhtye',
-    'laulu' => 'lauluääni',
-    'laulu:-rap' => 'räppäys',
-    'lauluyhtye:-lauluduo' => 'lauluyhtye',
-    'orkesteri:-big-band' => 'big band',
-    'puhe:-lausunta' => 'puheääni',
-    'tekninen---toteutus' => 'tekninen toteutus',
-    'yhtye' => 'yhtye',
-    'yhtye:-duo' => 'soitinyhtye',
-    'yhtye:-kaikki-soittimet' => 'soitinyhtye',
-    'ym' => 'ym.' # 
-    
-    );
 
-sub normalize_instrument($$) {
-    my ( $instrument, $marc_record_ref ) = @_;
-    if ( defined($normalize_instrument_hash{$instrument}) ) {
-	return $normalize_instrument_hash{$instrument};
-    }
-
-    # Needs processing:
-    if ( index($instrument, ':-') > -1 || index($instrument, '---') > -1 ) {
-	print STDERR "ERROR\tReject record\tInstrument '$instrument' requires normalization\n";
-	&add_REP_skip($marc_record_ref);
-    }
-
-    # Return as is:
-    return $instrument;
-}
 
 sub process_performer_note($$$$$) {
+    die();
+    # Re-implemented in tempo_artists_ownerships.pm.
+    # Remove this sub() eventually.
     my ( $prefix, $tempo_dataP, $marc_record_ref, $additional_musicians, $field_511_content_ref ) = @_;
     my $prefix2 = "/$prefix/artists_master_ownerships";
     my @results = grep { index($_, $prefix2) == 0 } @{$tempo_dataP}; # non-desctructive
@@ -1058,9 +1030,6 @@ sub process_performer_note($$$$$) {
 			    if ( $yhtye eq $instrument ||
 				 $instrument eq 'yhtye' ) {
 				# do nothing
-			    }
-			    elsif ( $yhtye eq 'yhtye' ) {
-				$yhtye = $instrument;
 			    }
 			    else {
 				print STDERR "ERROR\tReject record\tReason: performer note issue #2: $yhtye vs $instrument\n";
@@ -1108,6 +1077,8 @@ sub process_performer_note($$$$$) {
 	    if ( $i < $#name ) { $f511 .= ", "; }
 	}
     }
+
+
     # Handle additional musicians
     if ( defined($additional_musicians) ) {
 	if ( length($f511) > 0 ) {
@@ -1118,34 +1089,37 @@ sub process_performer_note($$$$$) {
 	}
     }
 
+    if ( length($f511) == 0 ) {
+	return;
+    }
+
     if ( $yhtye ) {
 	$f511 .= ', ' . $yhtye;
     }
-    
-    if ( length($f511) > 0 ) {
-	# Check description
 
+    my $content = "0 \x1Fa$f511.";
 
+    if ( ${$field_511_content_ref} ) {
+	# We have an existing data for field 511 as well. Merge them? Skip this?
+	# (Band name comes from here, and members from elsewhere)
 
-	my $content = "0 \x1Fa$f511.";
-	if ( ${$field_511_content_ref} ) {
-	    # Merge two 511 fields or die:
-	    # (Band name comes from here, and members from elsewhere)
-	    if ( ${$field_511_content_ref} =~ s/\x1Fa(Jäsenet|\S+ jäsenet):/\x1Fa$f511:/ ) {
-		return;
-	    }
+	# Append to the existing 511 (condidition performs the change...):
+	if ( ${$field_511_content_ref} =~ s/\x1Fa(Jäsenet|\S+ jäsenet):/\x1Fa$f511:/ ) {
 
-	    print STDERR "MULTI-511 ERROR/WARNING #1 for $f511:\n  '", ${$field_511_content_ref}, "'\n  '$content'\n";
-
-	    # Fallback: keep ${$field_511_content_ref} as it was,
-	    # and add this field as a separate field:
-	    add_marc_field($marc_record_ref, '511', $content);	    
-	    
+	    return;
 	}
-	else {
-	    ${$field_511_content_ref} = $content;
-	}
+
+	# The two 511 fields are logically separate or sumthing... Keep both:
+	print STDERR "MULTI-511 ERROR/WARNING #1 for $f511:\n  '", ${$field_511_content_ref}, "'\n  '$content'\n";
+
+	# Fallback: keep ${$field_511_content_ref} as it was,
+	# and add this field as a separate field:
+	add_marc_field($marc_record_ref, '511', $content);	    
     }
+    else {
+	${$field_511_content_ref} = $content;
+    }
+
 }
     
 
@@ -1962,6 +1936,7 @@ sub process_description($$$$$) {
 
     &process_single_description($desc2[0], $marc_record_ref, $is_host, $field_511_content_ref);
 
+    print STDERR "SINGLE '", ${$field_511_content_ref}, "\n";
 }
 
 sub process_duration($$$) {
@@ -2495,7 +2470,6 @@ sub process_tempo_data2($$$$) {
     
     
     my $is_classical_music = &is_classical_music($tempo_data_ref, $prefix);
-    my $field_511_content = '';
     
     if ( 1 ) {
 	my $n = $#{$tempo_data_ref} +1;
@@ -2836,6 +2810,7 @@ sub process_tempo_data2($$$$) {
     }
 
     # MARC511
+    my $field_511_content = '';
     if ( defined($desc_musicians) ) {
 	$desc_musicians =~ s/([^\.])$/$1./;
 	if ( $debug ) {
@@ -2847,12 +2822,9 @@ sub process_tempo_data2($$$$) {
 	}
 	$field_511_content = "0 \x1Fa$desc_musicians";
     }
-
-    
-    &process_performer_note($prefix, $tempo_data_ref, $marc_record_ref, $desc_additional_musicians, \$field_511_content); # 511. Do this before process_tempo_authors(), as this does not remove anything from $tempo_data_ref!
-
+   
     # MARC21: 1X0, 7X0 (FONO: ... )
-    &process_tempo_authors($prefix, $tempo_data_ref, $marc_record_ref, $is_classical_music, $is_host);
+    &process_tempo_authors($prefix, $tempo_data_ref, $marc_record_ref, $is_classical_music, $is_host, \$field_511_content, $desc_additional_musicians);
 
     # MARC21: 245
     if ( defined($tempo_title) ) {
@@ -2922,9 +2894,13 @@ sub process_tempo_data2($$$$) {
 
     # $prefix/descriptions
 
+
+    print STDERR "FÖRBÖR: '", $field_511_content, "'\n";
+    
     &process_description($is_host, $prefix, $tempo_data_ref, $marc_record_ref, \$description, \$field_511_content);
 
     if ( $field_511_content ) {
+	print STDERR "FÖRBÖR2: ", $field_511_content, "\n";
 	add_marc_field($marc_record_ref, '511', $field_511_content);
     }
     

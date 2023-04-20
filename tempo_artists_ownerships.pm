@@ -62,16 +62,51 @@ my $dd_regexp = get_dd_regexp();
 my $mm_regexp = get_mm_regexp();
 my $yyyy_regexp = get_yyyy_regexp();
 
-my $rejectables = "(?:Anonyymi|Kansan(sävelmä|perinne|runo|laulu)|Kanteletar|Koraalitoisinto|Negro spiritual|Nimeämätön|Raamattu|Ruotsin kirkon virsikirja|Tuntematon|Virsikirja)";
+my $rejectables = "(?:Anonyymi|Alma|Arppa|Asa|Kansan(sävelmä|perinne|runo|laulu)|Kanteletar|Koraalitoisinto|Negro spiritual|Nimeämätön|Raamattu|Ruotsin kirkon virsikirja|Tuntematon|Virsikirja)";
 
 
 # We should really trust our auth records, and not use this legacy list:
-my $human_names = "2pac/66KES88/Aksim 2000/Centro 53/js15/JS16/Jussi 69/Jyrki 69/Kid1/Kurt 49/Melody Boy 2000/Mars 31 Heaven/M1tsQ/Sairas T/Steen1/Tactic L/T1tsQ/Vilunki 3000";
+my $human_names = "2pac/66KES88/Aaro630|Aksim 2000/BEHM|Centro 53/js15/JS16/Jussi 69/Jyrki 69/Kid1/Kurt 49/Melody Boy 2000/Mars 31 Heaven/M1tsQ/Paperi T/Sairas T/Steen1/Tactic L/T1tsQ/Vilunki 3000";
 my @human_names = split("/", $human_names);
 my %human_names;
 foreach my $n ( @human_names ) { $human_names{$n} = 1; }
 
 
+my %normalize_instrument_hash = (
+    'kamariyhtye:-jousikvartetti' => 'soitinyhtye',
+    'kamariyhtye:-puhallinkvartetti' => 'puhallinyhtye',
+    'kamariyhtye:-puhallinkvintetti' => 'puhallinyhtye',
+    'laulu' => 'lauluääni',
+    'laulu,-yhtye' => 'lauluääni',
+    'laulu:-rap' => 'räppäys',
+    'lauluyhtye:-lauluduo' => 'lauluyhtye',
+    'orkesteri:-big-band' => 'big band',
+    'puhe:-lausunta' => 'puheääni',
+    'tekninen-toteutus' => 'tekninen toteutus',
+    'tekninen---toteutus' => 'tekninen toteutus',
+    'vanhan-musiikin-yhtye' => 'vanhan musiikin yhtye',
+    'yhtye' => 'yhtye',
+    'yhtye:-duo' => 'soitinyhtye',
+    'yhtye:-kaikki-soittimet' => 'soitinyhtye',
+    'ym' => 'ym.' # 
+    
+    );
+
+sub normalize_instrument($$) {
+    my ( $instrument, $marc_record_ref ) = @_;
+    if ( defined($normalize_instrument_hash{$instrument}) ) {
+	return $normalize_instrument_hash{$instrument};
+    }
+
+    # Needs processing:
+    if ( index($instrument, ':-') > -1 || index($instrument, '---') > -1 ) {
+	print STDERR "ERROR\tReject record\tInstrument '$instrument' requires normalization\n";
+	&add_REP_skip($marc_record_ref);
+    }
+
+    # Return as is:
+    return $instrument;
+}
 
 sub not_really_a_name($) {
     my ( $name ) = @_;
@@ -284,14 +319,15 @@ sub johtaja_hack($) {
     }
 }
 
-sub get_tempo_authors($$$) {
-    my ( $head, $arr_ref, $marc_record_ref ) = @_;
-
+sub get_tempo_authors($$$$$) {
+    my ( $head, $arr_ref, $marc_record_ref, $field_511_content_ref, $additional_musicians ) = @_;
     my %authors;
     # Should artists_publishing_ownerships[0] come before
     # artists_master_ownerships[0] or vice versa?
     # Currently index (=position) is shared.
     my @prefixes = ( "/$head/artists_publishing_ownerships", "/$head/artists_master_ownerships" );
+
+    my @names;
     for ( my $i=0; $i < scalar(@prefixes); $i++ ) {
 	my $curr_prefix = $prefixes[$i];
 	my $index = 0;
@@ -325,6 +361,7 @@ sub get_tempo_authors($$$) {
 	 	my $curr_key = 'artist/full_name';   
 		if ( defined($foo{$curr_key}) ) {
 		    my $curr_name = $foo{$curr_key};
+
 		    my %name_data = process_tempo_full_name($curr_name);
 
 		    # Index is meaningful, when we compare two authors:
@@ -341,6 +378,12 @@ sub get_tempo_authors($$$) {
 			merge_names($authors{$id}, \%name_data);
 		    }
 		    delete $foo{$curr_key};
+
+		    # Store name for field 511:
+		    if ( $curr_prefix eq "/$head/artists_master_ownerships" ) {
+			$names[$index] = $authors{$id}{'name'}  . "\t$id";
+			print STDERR "ADD 511-$index:", $names[$index], "\n";
+		    }
 		}
 		
 		$curr_key = 'rights_type/key';
@@ -420,10 +463,45 @@ sub get_tempo_authors($$$) {
 			}
 		    }
 		    @keys = sort keys %foo;
+
 		    foreach my $key ( @keys ) {
 			my $val = $foo{$key};
 			# Handle (and delete):
 			if ( $key =~ /^instruments\[\d+\]+\/key$/ ) {
+			    # NEW! NEW! Gather field 511 performer note stuff
+			    # here as well!
+			    if ( $curr_prefix eq "/$head/artists_master_ownerships" ) {
+				my $normalized_instrument = &normalize_instrument($val);
+				if ( $normalized_instrument && $normalized_instrument ne 'yhtye' ) { # 'yhtye' appears both with persons and bands...
+				    if ( $normalized_instrument =~ /yhtye$/ ) {
+					if (defined($authors{$id}{'511 yhtye'})) {
+					    my $old_yhtye = $authors{$id}{'511 yhtye'};
+					    if ( $normalized_instrument eq 'yhtye' || $old_yhtye eq $normalized_instrument ) {
+						# Do nothing
+					    }
+					    else {
+						print STDERR "ERROR\tReject record\tReason: performer note issue #2: ",  $old_yhtye, " vs $normalized_instrument\n";
+						&add_REP_skip($marc_record_ref);
+					    }
+					}
+					else {
+					    $authors{$id}{'511 yhtye'} = $normalized_instrument;
+					}
+				    }
+				    elsif ( !defined($authors{$id}{'511 instrument'}) ) {
+					$authors{$id}{'511 instrument'} = $normalized_instrument;
+				    }
+				    else {
+					if ( $normalized_instrument eq 'ym.' ) {
+					    $authors{$id}{'511 instrument'} .= ' '.$normalized_instrument;
+					}
+					else {
+					    $authors{$id}{'511 instrument'} .= ', '.$normalized_instrument;
+					}
+				    }
+				}
+			    }
+
 			    # We try to use 'yhtye' here as an indicator
 			    # of non-humanness... Didn't work out as humans
 			    # can have it as well...
@@ -486,9 +564,85 @@ sub get_tempo_authors($$$) {
     }
 
 
-    remove_non_authors(\%authors, $marc_record_ref);
 
+
+    my $f511 = '';
+    print STDERR scalar(@names), " NAME(S)\n";
+    for ( my $i=0; $i < scalar(@names); $i++ ) {
+	my $curr_name_and_id = $names[$i];
+	if ( !defined($curr_name_and_id) ) {
+	    next;
+	}
+	my ( $curr_name, $curr_id ) = split(/\t/, $curr_name_and_id);
+	if ( &not_really_a_name($curr_name) ) {
+	    next;
+	}
+	if ( !defined($authors{$curr_id}) ) { die("FAILED: '$curr_name_and_id'"); }
+	if ( $f511 ne '' ) { $f511 .= ', '; }
+	$f511 .= $curr_name;
+	if ( defined($authors{$curr_id}{'511 instrument'}) ) {
+	    $f511 .= ' ('.$authors{$curr_id}{'511 instrument'}.')';
+	}
+	if ( defined($authors{$curr_id}{'511 yhtye'}) ) {
+	    $f511 .= ' ('.$authors{$curr_id}{'511 yhtye'}.')';
+	}
+	elsif ( !educated_guess_is_person($authors{$curr_id}) ) {
+	    $f511 .= ' (yhtye)';
+	}
+	
+    }
+
+
+    remove_non_authors(\%authors, $marc_record_ref);
     johtaja_hack(\%authors);
+
+    # Handle additional musicians
+    if ( defined($additional_musicians) ) {
+	if ( length($f511) > 0 ) {
+	    $f511 .= ', ' . $additional_musicians;
+	}
+	else {
+	    $f511 = $additional_musicians;
+	}
+    }
+    
+    if ( $f511 ) {
+	print STDERR "511 = '$f511'\n";
+	$f511 = "0 \x1Fa$f511.";
+
+	if ( ${$field_511_content_ref} ) {
+	    # We have an existing data for field 511 as well. Merge them? Skip this?
+	    # (Band name comes from here, and members from elsewhere)
+	    
+	    # Append to the existing 511 (condidition performs the change...):
+	    if ( ${$field_511_content_ref} =~ /\x1Fa(Jäsenet|\S+n jäsenet):/ ) {
+
+		${$field_511_content_ref} =~ s/^..\x1Fa(Jäsenet|\S+n jäsenet):/:/;
+		$f511 =~ s/(\))\.$/$1/;
+		
+		${$field_511_content_ref} = $f511 . ${$field_511_content_ref};
+		    
+		return;
+	    }
+
+	    # The two 511 fields are logically separate or sumthing... Keep both:
+	    print STDERR "MULTI-511 ERROR/WARNING #1 for $f511:\n  '", ${$field_511_content_ref}, "'\n  '$f511'\n";
+	    
+	    # Fallback: keep ${$field_511_content_ref} as it was,
+	    # and add this field as a separate field:
+	    if ( 1 ) {
+		#print STDERR "FÖRÖBÖRÖ!\n";
+		add_marc_field($marc_record_ref, '511', $f511);	    
+	    }
+	    else { # Or would this be better orderwise?
+		add_marc_field($marc_record_ref, '511', ${$field_511_content_ref});	    
+		${$field_511_content_ref} = $f511;
+	    }
+	}
+	else {
+	    ${$field_511_content_ref} = $f511;
+	}	
+    }
     
     return %authors;
 }
@@ -824,8 +978,9 @@ sub educated_guess_is_person($) {
 	return 1;
     }
 
-    # Matias Sassali had this defined, so we can not use this, can we...
+
     # 'yhtye:-duo' maps to 'yhtye' here. However, 'yhtye' does not :D
+    # Eg. Matias Sassali had 'yhtye' defined, so we could not use 'yhtye.
     if ( defined($author{'yhtye'}) ) {
 	return 0;
     }
@@ -861,10 +1016,25 @@ sub educated_guess_is_person($) {
 	return 0;
     }
 
-    if ( $name =~ /('s |choir|ensemble|kuoro|kvintett|orchester|orkester|yhtye)/i ||
-	 $name =~ /((^| )(and|band|duo|ja|och|of|orchestra|project|the|trio)($| ))/i ||
-	 # Too long to be noble 'von' particle:
-	 $name =~ / ($pikkukirjain{7,})$/ ||
+    if ( $name =~ /('s |choir|ensemble|kuoro|kvintett|orchester|orkester|yhtye|[\!\?\&])/i ||
+	 $name =~ /((^| )(and|band|duo|ja|och|of|orchestra|project|the|trio)($| ))/i ) {
+	if ( $debug ) {
+	    print STDERR "Educated X00/X10 guess for '$name': band (reason: '$1')\n";
+	}
+	return 0;
+    }
+
+    # Iffy 
+    if ( defined($author{'511 instrument'}) && $author{'511 instrument'} =~ /(räppäys|lauluääni)/ ) {
+	if ( $debug ) {
+	    print STDERR "Educated X00/X10 guess for '$name': person (reason: '$1')\n";
+	}
+	return 1;
+    }
+
+    
+    # Too long to be noble 'von' particle:
+    if ( $name =~ / ($pikkukirjain{7,})$/ ||
 	 $name =~ /^(\S+ $pikkukirjain+)$/ || # "Suomen peli"
 	 $name =~ /^($iso_kirjain{3,})/ ) {
 	if ( $debug ) {
@@ -872,6 +1042,7 @@ sub educated_guess_is_person($) {
 	}
 	return 0;
     }
+
     
     if ( $debug ) {
 	print STDERR "Educated X00/X10 guess for name '$name': person (reason: default)\n";
@@ -1235,13 +1406,10 @@ sub sanity_check_functions($) {
     
 
 
-sub process_tempo_authors($$$$$) {
-    my ( $prefix, $tempo_dataP, $marc_recordP, $is_classical_music, $is_host ) = @_;
-
-    my %authors = get_tempo_authors($prefix, $tempo_dataP, $marc_recordP);
+sub process_tempo_authors($$$$$$$) {
+    my ( $prefix, $tempo_dataP, $marc_recordP, $is_classical_music, $is_host, $field_511_content_ref, $additional_musicians ) = @_;
+    my %authors = get_tempo_authors($prefix, $tempo_dataP, $marc_recordP, $field_511_content_ref, $additional_musicians);
     
-
-
     #sanity_check_functions(\%authors);
     
     # Score each author:
