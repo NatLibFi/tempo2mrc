@@ -620,12 +620,8 @@ sub get_tempo_authors($$$$$) {
 	    # (Band name comes from here, and members from elsewhere)
 	    
 	    # Append to the existing 511 (condidition performs the change...):
-	    if ( ${$field_511_content_ref} =~ /\x1Fa(Jäsenet|\S+n jäsenet):/ ) {
-
-		${$field_511_content_ref} =~ s/^..\x1Fa(Jäsenet|\S+n jäsenet):/:/;
-		$f511 =~ s/\)|yhtye)\.$/$1/;
-		
-		${$field_511_content_ref} = $f511 . ${$field_511_content_ref};
+	    if ( ${$field_511_content_ref} =~ s/^..\x1Fa(Jäsenet|\S+n jäsenet):/0 \x1Fa$f511:/ ) {
+		${$field_511_content_ref} =~ s/(\)|yhtye)\.:/$1:/g;
 		    
 		return;
 	    }
