@@ -1798,7 +1798,7 @@ sub process_description2language_notes($$$) {
     
     my $n_hits = 0;
 
-    my $esittelylehtinen = "(?:Esittelylehtinen|Esittelylehtinen ja synopsis|Esittelylehtinen ja tekstilehtinen|Libretto|Tekstilehtinen|Tekstilehtinen ja esittelylehtinen)(?: myös)?";
+    my $esittelylehtinen = "(?:Esittelylehtinen|Esittelylehtinen ja synopsis|Esittelylehtinen ja tekstilehtinen|Libretto|Tekstilehtinen|Tekstilehtinen ja esittelylehtinen|\S+lehtinen)(?: myös)?";
 
 
     # YLE: "Oheistiedot
