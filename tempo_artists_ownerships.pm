@@ -62,7 +62,7 @@ my $dd_regexp = get_dd_regexp();
 my $mm_regexp = get_mm_regexp();
 my $yyyy_regexp = get_yyyy_regexp();
 
-my $rejectables = "(?:Anonyymi|Alma|Arppa|Asa|Kansan(sävelmä|perinne|runo|laulu)|Kanteletar|Koraalitoisinto|Negro spiritual|Nimeämätön|Raamattu|Ruotsin kirkon virsikirja|Tuntematon|Virsikirja)";
+my $rejectables = "(?:Anonyymi|Kansan(sävelmä|perinne|runo|laulu)|Kanteletar|Koraalitoisinto|Negro spiritual|Nimeämätön|Raamattu|Ruotsin kirkon virsikirja|Tuntematon|Virsikirja)";
 
 
 # We should really trust our auth records, and not use this legacy list:
@@ -319,6 +319,7 @@ sub johtaja_hack($) {
     }
 }
 
+
 sub get_tempo_authors($$$$$) {
     my ( $head, $arr_ref, $marc_record_ref, $field_511_content_ref, $additional_musicians ) = @_;
     my %authors;
@@ -472,20 +473,20 @@ sub get_tempo_authors($$$$$) {
 			    # here as well!
 			    if ( $curr_prefix eq "/$head/artists_master_ownerships" ) {
 				my $normalized_instrument = &normalize_instrument($val);
-				if ( $normalized_instrument && $normalized_instrument ne 'yhtye' ) { # 'yhtye' appears both with persons and bands...
+				if ( $normalized_instrument ) {
 				    if ( $normalized_instrument =~ /yhtye$/ ) {
-					if (defined($authors{$id}{'511 yhtye'})) {
-					    my $old_yhtye = $authors{$id}{'511 yhtye'};
-					    if ( $normalized_instrument eq 'yhtye' || $old_yhtye eq $normalized_instrument ) {
-						# Do nothing
-					    }
-					    else {
-						print STDERR "ERROR\tReject record\tReason: performer note issue #2: ",  $old_yhtye, " vs $normalized_instrument\n";
-						&add_REP_skip($marc_record_ref);
-					    }
-					}
-					else {
+					if (!defined($authors{$id}{'511 yhtye'}) || $authors{$id}{'511 yhtye'} eq 'yhtye' || $authors{$id}{'511 yhtye'} eq $normalized_instrument )  {
 					    $authors{$id}{'511 yhtye'} = $normalized_instrument;
+					}
+					elsif ( $normalized_instrument eq 'yhtye' ) {
+					    # Do nothing
+					}
+					# We might be int trouble here...
+					else {
+					    my $old_yhtye = $authors{$id}{'511 yhtye'};
+					    print STDERR "ERROR\tReject record\tReason: performer note issue #2: ",  $old_yhtye, " vs $normalized_instrument\n";
+					    &add_REP_skip($marc_record_ref);
+					    die(); # OVerkill! Remove this
 					}
 				    }
 				    elsif ( !defined($authors{$id}{'511 instrument'}) ) {
@@ -564,8 +565,9 @@ sub get_tempo_authors($$$$$) {
     }
 
 
-
-
+    remove_non_authors(\%authors, $marc_record_ref);
+    johtaja_hack(\%authors);
+    
     my $f511 = '';
     print STDERR scalar(@names), " NAME(S)\n";
     for ( my $i=0; $i < scalar(@names); $i++ ) {
@@ -578,23 +580,26 @@ sub get_tempo_authors($$$$$) {
 	    next;
 	}
 	if ( !defined($authors{$curr_id}) ) { die("FAILED: '$curr_name_and_id'"); }
+
+	&tempo_author2asteri_record($authors{$curr_id}); # sets 'ten'
+	    
 	if ( $f511 ne '' ) { $f511 .= ', '; }
 	$f511 .= $curr_name;
 	if ( defined($authors{$curr_id}{'511 instrument'}) ) {
 	    $f511 .= ' ('.$authors{$curr_id}{'511 instrument'}.')';
 	}
 	if ( defined($authors{$curr_id}{'511 yhtye'}) ) {
-	    $f511 .= ' ('.$authors{$curr_id}{'511 yhtye'}.')';
+	    if ( $authors{$curr_id}{'ten'} eq '1' ) {
+		$f511 .= ' ('.$authors{$curr_id}{'511 yhtye'}.')';
+	    }
+	    else {
+		$f511 .= ', ' . $authors{$curr_id}{'511 yhtye'};
+	    }
 	}
-	elsif ( !educated_guess_is_person($authors{$curr_id}) ) {
-	    $f511 .= ' (yhtye)';
-	}
-	
     }
 
 
-    remove_non_authors(\%authors, $marc_record_ref);
-    johtaja_hack(\%authors);
+
 
     # Handle additional musicians
     if ( defined($additional_musicians) ) {
@@ -618,7 +623,7 @@ sub get_tempo_authors($$$$$) {
 	    if ( ${$field_511_content_ref} =~ /\x1Fa(Jäsenet|\S+n jäsenet):/ ) {
 
 		${$field_511_content_ref} =~ s/^..\x1Fa(Jäsenet|\S+n jäsenet):/:/;
-		$f511 =~ s/(\))\.$/$1/;
+		$f511 =~ s/\)|yhtye)\.$/$1/;
 		
 		${$field_511_content_ref} = $f511 . ${$field_511_content_ref};
 		    
@@ -688,7 +693,7 @@ sub remove_non_authors($$) {
 	elsif ( not_really_a_name($name) ) {
 	    if ( $name !~ /$rejectables$/i && $name !~ /^$rejectables/ ) {
 		if ( !$robust ) {
-		    die();
+		    die($name);
 		}
 	    }
 	    
@@ -899,7 +904,9 @@ sub remove_birth_and_death_mismatches($$) {
 }
 
 
-sub tempo_author2asteri_record($$) {
+
+
+sub tempo_author2asteri_record2($$) {
     my ( $author_ref, $cand_records_ref ) = @_;
 
     #read_minified_fin11(); }
@@ -935,6 +942,7 @@ sub tempo_author2asteri_record($$) {
 	}
 	return ${$cand_records_ref}[0];
     }
+    
     print STDERR "Multiple candidates remains. Skip.\n";
     foreach my $record ( @{$cand_records_ref}) {
 	my $tmp = $record->toString();
@@ -978,43 +986,32 @@ sub educated_guess_is_person($) {
 	return 1;
     }
 
-
     # 'yhtye:-duo' maps to 'yhtye' here. However, 'yhtye' does not :D
     # Eg. Matias Sassali had 'yhtye' defined, so we could not use 'yhtye.
     if ( defined($author{'yhtye'}) ) {
 	return 0;
     }
 
-
-
-
-    
     my $name = $author{'name'};
 
+    if ( defined($human_names{$name}) ) {
+	# NB! No need to list the ones with an authority record
+	return 1;
+    }
+
     if ( $name =~ / "$iso_kirjain$pikkukirjain+( $iso_kirjain$pikkukirjain+)?" / ) {
-	# Kutsumanimi
+	# Bands don't have nicknames; it's a person...
 	return 1;
     }
     
     if ( $name =~ /[0-9]/ ) {
-	if ( defined($human_names{$name}) ) {
-	    # NB! No need to list the ones with an authority record
-	    return 1;
-	}
 	if ( $debug ) {
 	    print STDERR "Educated X00/X10 guess for '$name': band (reason: digits)\n";
 	}
 	return 0;
     }
+
     # TODO: "The bands" etc
-    if ( $name !~ / / ) {
-	if ( defined($human_names{$name}) ) {
-	    # NB! No need to list the ones with an authority record
-	    die(); # untested after mods
-	    return 1;
-	}
-	return 0;
-    }
 
     if ( $name =~ /('s |choir|ensemble|kuoro|kvintett|orchester|orkester|yhtye|[\!\?\&])/i ||
 	 $name =~ /((^| )(and|band|duo|ja|och|of|orchestra|project|the|trio)($| ))/i ) {
@@ -1023,8 +1020,8 @@ sub educated_guess_is_person($) {
 	}
 	return 0;
     }
-
-    # Iffy 
+    
+    # Iffy:
     if ( defined($author{'511 instrument'}) && $author{'511 instrument'} =~ /(räppäys|lauluääni)/ ) {
 	if ( $debug ) {
 	    print STDERR "Educated X00/X10 guess for '$name': person (reason: '$1')\n";
@@ -1032,6 +1029,10 @@ sub educated_guess_is_person($) {
 	return 1;
     }
 
+    
+    if ( $name !~ / / ) { # Single word is band by default:
+	return 0;
+    }
     
     # Too long to be noble 'von' particle:
     if ( $name =~ / ($pikkukirjain{7,})$/ ||
@@ -1158,30 +1159,57 @@ sub X00_ind1_and_subfield_a($) {
     return "1 \x1Fa$name";
 }
 
-sub tempo_author_to_marc_field($$$) {
-    my ( $author_ref, $marc_record_ref, $hundred ) = @_;
+
+sub alt_name2filtered_auth_records($$) {
+    my ( $name, $skippable_records_ref ) = @_;
+    my @records = &alt_name2auth_records($name);
+
+    # Remove cand records from alt cand records:
+    my $n = scalar(@records);
+    if ( $n ) {
+	my @skippable_ids = map { $_->get_first_matching_field_content('001') } @{$skippable_records_ref};
+	if (scalar(@skippable_ids) && scalar(@records) ) {
+	    my %skippable_ids_hash;
+	    foreach my $skippable_id ( @skippable_ids ) {
+		$skippable_ids_hash{$skippable_id} = 1;
+	    }
+
+	    @records = grep { !defined($skippable_ids_hash{$_->get_first_matching_field_content('001')}) } @records;
+	    my $n2 = scalar(@records);
+	    if ( $n2 < $n ) {
+		print STDERR "Filter alt cands from $n to $n2 ($name)\n";
+	    }
+	}
+    }
+    return @records;
+}
+    
+sub filter_by_humanness($$) {
+    my ( $author_ref, $bib_records_ref ) = @_;
+
+    my $must_be_human = tempo_is_definitely_human($author_ref);
+
+    if ( $must_be_human ) {
+	# Remove non-humans from candidate bib records reference:
+	@{$bib_records_ref} = grep { $_->get_first_matching_field('100') } @{$bib_records_ref};
+	
+	@{$bib_records_ref} = remove_birth_and_death_mismatches($author_ref, $bib_records_ref);
+    }
+}
+
+
+
+sub tempo_author2asteri_record($) {
+    my ( $author_ref ) = @_;
     my %author = %{$author_ref};
 
     my $name = $author{'name'};
 
     my @cand_records = &name2auth_records($name);
-    my @alt_cand_records = &alt_name2auth_records($name);
-    # Remove cand records from alt cand records:
-    if ( 1 ) {
-	my @cand_ids = map { $_->get_first_matching_field_content('001') } @cand_records;
-	if (scalar(@cand_ids) && scalar(@alt_cand_records) ) {
-	    my %cand_ids_hash;
-	    foreach my $cand_id ( @cand_ids ) { $cand_ids_hash{$cand_id} = 1; }
-	    my $n = scalar(@alt_cand_records);
-	    @alt_cand_records = grep { !defined($cand_ids_hash{$_->get_first_matching_field_content('001')}) } @alt_cand_records;
-	    my $n2 = scalar(@alt_cand_records);
-	    #if ( $n2 < $n ) {
-		print STDERR "Filter alt cands from $n to $n2\n";
-	    #}
-	}
-    }
+    my @alt_cand_records = &alt_name2filtered_auth_records($name, \@cand_records);
     
     my $n_cands = scalar(@cand_records);
+
     if ( $debug ) {
 	print STDERR "author ($name) => asteri: $n_cands cand(s) and ", scalar(@alt_cand_records), " alt cand(s) found.\n";
 	foreach my $cand_record ( @cand_records ) {
@@ -1193,39 +1221,52 @@ sub tempo_author_to_marc_field($$$) {
 	    print STDERR "  ALT ID: ", $id->{content}, "\n";
 	}
     }
+
     #if ( scalar(@cand_records) > 0 ) { die(); } # test: found something
 
-
     if ( $name =~ /ja\/tai/ ) { die(); } # Fono crap. Sanity check: do we see this also in Tempo...
-    
-    my $must_be_human = tempo_is_definitely_human($author_ref);
-    if ( $must_be_human ) {
-	# Remove non-humans from @cand_records:
-	@cand_records = grep { $_->get_first_matching_field('100') } @cand_records;
-	@cand_records = remove_birth_and_death_mismatches($author_ref, \@cand_records);
-	if ( scalar(@cand_records) == 0 ) {
-	    @alt_cand_records = grep { $_->get_first_matching_field('100') } @alt_cand_records;
-	    @alt_cand_records = remove_birth_and_death_mismatches($author_ref, \@alt_cand_records);
-	}
-    }
 
-    if ( $n_cands != scalar(@cand_records) ) {
+    &filter_by_humanness($author_ref, \@cand_records);
+    &filter_by_humanness($author_ref, \@alt_cand_records);
+    
+    if ( scalar(@cand_records) == 0 && scalar(@alt_cand_records) > 0 ) {
+	@cand_records = @alt_cand_records;
+	if ( 0 ) {
+	    print STDERR "Using ALT records...\n";
+	    foreach my $tmp_record ( @cand_records ) {
+		print STDERR $tmp_record->toString();
+	    }
+	}
+	# Seen "Jurek Reunamäki" => "Jurek"
+	# die(); # test after changes
+    }
+    elsif ( $n_cands != scalar(@cand_records) ) {
 	if ( $debug ) {
 	    print STDERR "  after filtering ", scalar(@cand_records), " cand(s) found.\n";
 	}
 	$n_cands = scalar(@cand_records);
     }
 
+    print STDERR "ta2ar\n";
+    my $asteri_record = tempo_author2asteri_record2($author_ref, \@cand_records);
+    my $ten = get_tens($author_ref, $asteri_record, \@cand_records);
+
+    $author_ref->{'ten'} = $ten;
     
-    
-    my $asteri_record = tempo_author2asteri_record($author_ref, \@cand_records);
+    return $asteri_record;
+}
 
 
-    my $records4tens_ref = ( scalar(@cand_records) > 0 ? \@cand_records : \@alt_cand_records);
-    
-    my $ten = get_tens($author_ref, $asteri_record, $records4tens_ref);
+sub tempo_author_to_marc_field($$$) {
+    my ( $author_ref, $marc_record_ref, $hundred ) = @_;	
+    my %author = %{$author_ref};
 
-    print STDERR "A2M $name BAND? X${ten}0, ASTERI: ", ($asteri_record ? 'Y':'N'), ", $n_cands\n";
+    my $name = $author{'name'};
+    print STDERR "tatmf...\n";
+    my $asteri_record = &tempo_author2asteri_record($author_ref);
+    my $ten = $author_ref->{'ten'};
+    
+    print STDERR "A2M $name BAND? X${ten}0, ASTERI: ", ($asteri_record ? 'Y':'N'), "\n";
     my ( $content, $sf0 ) = &asteri_record2content($asteri_record); # IND1, IND2 & $abcd0
 
     if ( !$content ) {
