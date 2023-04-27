@@ -1798,7 +1798,7 @@ sub process_description2language_notes($$$) {
     
     my $n_hits = 0;
 
-    my $esittelylehtinen = "(?:Esittelylehtinen|Esittelylehtinen ja synopsis|Esittelylehtinen ja tekstilehtinen|Libretto|Tekstilehtinen|Tekstilehtinen ja esittelylehtinen|\S+lehtinen)(?: myös)?";
+    my $esittelylehtinen = "(?:Esittelylehtinen|Esittelylehtinen ja synopsis|Esittelylehtinen ja tekstilehtinen|Libretto|Tekstilehtinen|Tekstilehtinen ja esittelylehtinen|\\S+lehtinen)(?: myös)?";
 
 
     # YLE: "Oheistiedot
@@ -3241,6 +3241,36 @@ sub create_host_field_505($) {
     add_marc_field(\$host, '505', "0 \x1Fa".$value.".");  
 }
 
+
+# TM: 27.4.2023: "poikaset ovat multiparteja. Niihin ei ole tullut lainkaan tekijäkirjauksia. Emolla sellaiset kuitenkin on, joten voinee melko turvallisesti olettaa, että ne ovat samat poikasissa. Etenkin säveltäjä pitäisi kyllä saada poikasten 1XX:ään aina kun mahdollista ja toki muutkin tekijät 7XX:ään"
+
+sub derive_missing_authors($) {
+    my ( $records_ref ) = @_;
+    my @comps = @{$records_ref};
+    if ( scalar(@comps) < 2 ) { return; }
+    my $host = shift @comps; # remove host from comp array
+    
+    my @host_author_fields = $host->get_all_matching_fields('[17][01]0');
+    my @host_511 = $host->get_all_matching_fields('511');
+    
+    if ( scalar(@host_author_fields) == 0 ) { return; }
+
+    for (my $i=0; $i < scalar(@comps); $i++ ) {
+	my @comp_author_fields = $comps[$i]->get_all_matching_fields('[17][01]0');
+	# Copy author fields from host:
+	if ( scalar(@comp_author_fields) == 0 ) {
+	    foreach my $author_field ( @host_author_fields ) {
+		$comps[$i]->add_field($author_field->{tag}, $author_field->{content});
+	    }
+	    foreach my $author_field ( @host_511 ) {
+		$comps[$i]->add_field($author_field->{tag}, $author_field->{content});
+	    }
+	    $comps[$i]->add_field('588', "0 \x1FaTekijätiedot emotietueesta.");
+	}
+
+    }
+}
+
 print STDERR ($#input_files+1), " input files to be processed...\n";
      
 for ( my $i=0; $i <= $#input_files; $i++ ) {
@@ -3255,7 +3285,8 @@ for ( my $i=0; $i <= $#input_files; $i++ ) {
 
     fix_300a(\@marc_objects);
     create_host_field_505(\@marc_objects);
-
+    derive_missing_authors(\@marc_objects);
+    
     # Final fixes: set certain indicators and sort fields:
     foreach my $record ( @marc_objects ) {
 	$record->fix_245_ind1();
