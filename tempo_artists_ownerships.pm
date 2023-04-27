@@ -395,6 +395,8 @@ sub get_tempo_authors($$$$$) {
 			# vastuussa koko teoksesta eli tekstisisältöisessä
 			# laulussa säveltäjä ja sanoittaja."
 			$authors{$id}{'säveltäjä'} = 'säveltäjä';
+			# TODO/PRKL: toi sanottajuus yligeneroi, jos ei
+			# tekstisisältöä...
 			$authors{$id}{'sanoittaja'} = 'sanoittaja';
 		    }
 		    else {
@@ -440,13 +442,13 @@ sub get_tempo_authors($$$$$) {
 				$proceed = 0;
 				if ( $val =~ s/^(?:myös )?(san|sov|säv)($|, *)//i ) {
 				    my $func = normalize_function(tempo_lc($1));
-				    #$authors{$id}{$func} = $func;
+				    $authors{$id}{$func} = $func;
 				    $proceed = 1;
 				}
 				# Tail
 				elsif ( $val =~ s/(?:^|, )(san|sov|säv)$//i ) {
 				    my $func = normalize_function(tempo_lc($1));
-				    #$authors{$id}{$func} = $func;
+				    $authors{$id}{$func} = $func;
 				    $proceed = 1;
 				}
 				
