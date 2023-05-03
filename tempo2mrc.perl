@@ -3260,7 +3260,11 @@ sub derive_missing_authors($) {
 	# Copy author fields from host:
 	if ( scalar(@comp_author_fields) == 0 ) {
 	    foreach my $author_field ( @host_author_fields ) {
-		$comps[$i]->add_field($author_field->{tag}, $author_field->{content});
+		my $curr_tag = $author_field->{tag};
+		if ( $author_field->{content} !~ /\x1Fesäveltäjä/ ) {
+		    $curr_tag =~ s/^1/7/;
+		}
+		$comps[$i]->add_field($curr_tag, $author_field->{content});
 	    }
 	    foreach my $author_field ( @host_511 ) {
 		$comps[$i]->add_field($author_field->{tag}, $author_field->{content});
