@@ -1273,7 +1273,7 @@ sub tempo_author_to_marc_field($$$) {
 	    # We just hope that $name refers to the FIN11 record...
 	    my $tarke = name2tarke($name);
 	    if ( defined($tarke) ) {
-		if ( $tarke eq "MONISELITTEINEN" ) {
+		if ( $tarke eq "MONISELITTEINEN" || $tarke =~ /\t/) {
 		    print STDERR "WARNING\tAmbiguous name '$name' detected. Tarke not added.\n";
 		}
 		elsif ( $tarke ne '__TYHJÄ__' ) {
