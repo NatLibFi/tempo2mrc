@@ -2444,7 +2444,6 @@ sub fix_008_23($) {
 }
     
 
-
 sub process_tempo_data2($$$$);
 sub process_tempo_data2($$$$) {
     my ( $prefix, $is_host, $tempo_data_ref, $marc_record_ref ) = @_;
@@ -2455,6 +2454,7 @@ sub process_tempo_data2($$$$) {
     # here...)
     if ( !defined($marc_record_ref) ) {
 	my $foo_marc_record = new nvolk_marc_record();
+	$foo_marc_record->{leader} =~ s/^(.{17})./${1}5/; # Set encoding l
 	$marc_record_ref = \$foo_marc_record;
     }
 
