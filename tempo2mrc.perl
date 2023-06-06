@@ -153,7 +153,7 @@ sub reject_batch($) {
 
     foreach my $record ( @{$marc_records_ref} ) {
 	if ( $record->is_deleted() ) {
-	    print STDERR "BATCH REJECTED! REASON: CDY/DIGY (MARC AS DELETED)\n";
+	    print STDERR "BATCH REJECTED! REASON: CDY/DIGY (MARK AS DELETED)\n";
 	    return 1;
 	}
     }
@@ -295,8 +295,8 @@ sub get_tempo_id_from_marc_record($) {
 
 
 
-my $yhtyeen = "(?:muut )?(?:jousikvartetin|jousikvintetin|jousisekstetin|kamariorkesterin|kamariyhtyeen|kuoron|lauluyhtyeen|orkesterin|säestävän yhtyeen|yhtyeen)";
-my $rooli = "(?:levyllä esiintyvät |mahdollinen |muut? )?(?:avustajat?|esittäjät?|jäsen|jäsenet|jäseniä|mahdollinen avustaja|muusikot|soitinsolistit|solistit|soololaulaja|säestävät muusikot)";
+my $yhtyeen = "(?:muut )?(?:jousikvartetin|jousikvintetin|jousisekstetin|kamariorkesterin|kamariyhtyeen|kuoron|kuoron ja orkesterin|lauluyhtyeen|orkesterin|säestävän yhtyeen|yhtyeen)(?: muut)?";
+my $rooli = "(?:levyllä esiintyvät |mahdollinen |muut? )?(?:avustajat?|esittäjät?|jäsen|jäsenet|jäseniä|mahdollinen avustaja|muusikot|soitinsolistit|solistit|soololaulaja|säestävät muusikot|taustalaulajat)";
 my $jossakin = "(?:teoskohtaisesti )?(?:albumin |levyn )?(?:albumitasolla|esittelylehtisessä|kannessa|kansilehdessä|oheislehtisessä|oheistiedoissa|sisäkannessa|tekstilehtisessä|tiedoissa|yleistietodokumentissa)";
 
 
@@ -308,7 +308,7 @@ sub description_cleanup($) {
     ${$description_ref} =~ s/^ +//gm;
     ${$description_ref} =~ s/ +$//gm;
     print STDERR "DC: '", ${$description_ref}, "'\n";
-    while ( ${$description_ref} =~ s/(^|\. |  )(?:$yhtyeen )?(?:$rooli|$rooli ja $rooli) lueteltu $jossakin(?:( ja| sekä) $jossakin)?(?:$|\.)/$1/im ) {
+    while ( ${$description_ref} =~ s/(^|\. |  )(?:$yhtyeen )?(?:$rooli|$rooli ja $rooli) lueteltu (?:$jossakin(?:( ja| sekä) $jossakin)?|$pikkukirjain+)(?:$|\.)/$1/im ) {
 	${$description_ref} =~ s/^ +//gm;
 	#${$description_ref} =~ s/ +$//gm;
 	${$description_ref} =~ s/ +/ /gm;	
@@ -378,7 +378,7 @@ sub extract_identifier($$$) {
     # Multiple EAN/ISRC should not happen
     if ( scalar(@codes) > 1 && $key =~ /\/(ean|isrc)$/ ) {
 	print STDERR "ERROR\tReject record\tReason: multiple instance of '$key'\n";
-	&add_REP_skip($marc_record_ref);
+	#&add_REP_skip($marc_record_ref);
     }
     
     @codes = sort @codes; # TM wished this for isrc 2022-08-19. (Should we do ean and isrc separately?)
@@ -647,8 +647,9 @@ sub description2musicians($$) {
 
     print STDERR "D2M '",  ${$description_ref}, "'\n";
 
-    if ( ${$description_ref} =~ s/^(.*) ja (.*?)\. Muut jäsenet: (.*)$// ) {
+    if ( ${$description_ref} =~ s/^(.*) ja (.*?)\. (?:Muut jäsenet|Yhtyeen muut jäsenet): (.*)$// ) {
 	my $musicians = "$1 ja $2: $1, $3";
+	die($musicians);
 	normalize_musicians(\$musicians);
 	return $musicians;
     }
@@ -662,7 +663,9 @@ sub description2musicians($$) {
     }
     
     my $tmp = ${$description_ref};
+    print STDERR "TMP: $tmp\n";
     if ( $tmp =~ s/(?:^| )((?:$yhtyeen )?(?:$rooli): .*)$//i ) {
+
 	my $musicians = $1;
 	if ( $musicians =~ /^[A-Z]/ ) {
 	    ${$description_ref} = $tmp;
@@ -677,6 +680,7 @@ sub description2musicians($$) {
 	# Don't accept record as some information is lost:
 	print STDERR "ERROR\tReject record\tReason: desc2musicians '", ${$description_ref}, "'\n";
 	&add_REP_skip($marc_record_ref);
+	die();
     }
 
     return undef;
@@ -1110,7 +1114,7 @@ sub process_performer_note($$$$$) {
 	}
 
 	# The two 511 fields are logically separate or sumthing... Keep both:
-	print STDERR "MULTI-511 ERROR/WARNING #1 for $f511:\n  '", ${$field_511_content_ref}, "'\n  '$content'\n";
+	print STDERR "MULTI-511 ERROR/WARNING #1 for '", kk_marc21_field::fieldToString($f511), "':\n  '", ${$field_511_content_ref}, "'\n  '$content'\n";
 
 	# Fallback: keep ${$field_511_content_ref} as it was,
 	# and add this field as a separate field:
@@ -1798,8 +1802,12 @@ sub process_description2language_notes($$$) {
     
     my $n_hits = 0;
 
+    # typo fixes:
+    ${$description_ref} =~ s/(kehtinen|lehtinej) /lehtinen /;
+    ${$description_ref} =~ s/sittelylehtien /sittelylehtinen /;
+    ${$description_ref} = trim_all(${$description_ref});
+    
     my $esittelylehtinen = "(?:Esittelylehtinen|Esittelylehtinen ja synopsis|Esittelylehtinen ja tekstilehtinen|Libretto|Tekstilehtinen|Tekstilehtinen ja esittelylehtinen|\\S+lehtinen)(?: myös)?";
-
 
     # YLE: "Oheistiedot
     #
@@ -1824,16 +1832,15 @@ sub process_description2language_notes($$$) {
     # If one of the above, we add $e 1 tekstiliite (and *never* two).
     # All related language info is stored in 040$g.
 
-    # typo fixes:
-    ${$description_ref} =~ s/sittelylehtien /sittelylehtinen /;
-    ${$description_ref} = trim_all(${$description_ref});
+
 	
     my $add_300e = 0;
     print STDERR "TEST: '", ${$description_ref}, "'\n";
-    while ( ${$description_ref} =~ s/(?:^| )($esittelylehtinen(?: (?:[a-z]|ä)+ksi,)*(?: (?:[a-z]|ä)+ksi ja)? (?:[a-z]|ä)+ksi)(?:\.?$|\. )/ / ) {
+    while ( ${$description_ref} =~ s/(?:^| )($esittelylehtinen(?: myös)?(?: (?:[a-z]|ä)+ksi,)*(?: (?:[a-z]|ä)+ksi ja| esityskielellä ja)? (?:[a-z]|ä)+ksi|esityskielellä)(?:\.?$|\. )/ / ) {
 	my $text = $1.'.';
-	print STDERR "TEST PASS...\n";
+	print STDERR "TEST PASS... REMAINING-1: '", ${$description_ref}, "'\n";
 	${$description_ref} = trim_all(${$description_ref});
+	print STDERR "TEST PASS... REMAINING-2: '", ${$description_ref}, "'\n";
 	$n_hits++;
 	
 	my $content = "  \x1Fa".$text;
@@ -1852,11 +1859,14 @@ sub process_description2language_notes($$$) {
     }
 	
     # Try to detect if we didn't process everything...
-    if ( ${$description_ref} =~ /$esittelylehtinen/i ) {
+    if ( ${$description_ref} =~ /($esittelylehtinen)/i ) {
 	#${$description_ref} =~ /\s/ &&
 	#${$description_ref} =~ /(?:esittelylehti|tekstilehti)/i ) {
-	print STDERR "ERROR\tReject record\tReason: esittelylehtinen '", ${$description_ref}, "'\n";
-	&add_REP_skip($marc_record_ref);
+	print STDERR "ERROR\tLEFTOVERS: '", ${$description_ref}, "'\n";
+	#&add_REP_skip($marc_record_ref);
+
+	add_marc_field($marc_record_ref, '500', "  \x1Fa".${$description_ref}."\x1F5TEMPO");
+	${$description_ref} = '';
     }
     
     if ( $add_300e ) { # move to a separate_function
@@ -1873,8 +1883,8 @@ sub process_single_description($$$$) {
     &description_cleanup(\$mess);
 	
     if ( $mess =~ /lueteltu/ ) {
-	print STDERR "ERROR\tReject record\tReason:: 511 /lueteltu/ in '$mess'\n";
-	&add_REP_skip($marc_record_ref);
+	print STDERR "ERROR\t511 /lueteltu/ in '$mess'\n";
+	#&add_REP_skip($marc_record_ref);
     }
     elsif ( $mess =~ /\S/ ) {
 	$mess = trim_all($mess);
@@ -2095,8 +2105,9 @@ sub marc_add_date_and_place_of_an_event_note($$$$$) { # Add field 518:
     }
     
     if ( !defined($other_information) ) {
-	print STDERR "ERROR\tReject record\tReason: no other information\n";
-	&add_REP_skip($marc_record_ref);
+	print STDERR "ERROR\tno other information\n";
+	#&add_REP_skip($marc_record_ref);
+	return;
     }
     
     $other_information =~ s/([^:])$/$1:/; # add ':' if needed
@@ -2292,7 +2303,7 @@ sub illegal_prod_code($) {
     my $prod_code = shift;
     if ( $prod_code =~ /^Ei kaupallista tunnusta/i ||
 	 # Including typos:
-	 $prod_code =~ /^Ei ?(kalogi|katalogi|katqalogi|tilaus)(numeoa|numeroa|umeroa)/i ) {
+	 $prod_code =~ /^Ei ?(kalogi|katalogi|katqalogi|tilaus)(numeoa|numero|numeroa|umeroa)/i ) {
 	return 1;
     }
     return 0;
@@ -2454,6 +2465,7 @@ sub process_tempo_data2($$$$) {
     # here...)
     if ( !defined($marc_record_ref) ) {
 	my $foo_marc_record = new nvolk_marc_record();
+	# After MELINDA-8451 we changed LDR/17: '4' => '5':
 	$foo_marc_record->{leader} =~ s/^(.{17})./${1}5/; # Set encoding l
 	$marc_record_ref = \$foo_marc_record;
     }
@@ -2534,10 +2546,35 @@ sub process_tempo_data2($$$$) {
     
     if ( defined($artist_notes) ) {
 	print STDERR "AN: $artist_notes\n";
-	if ( defined($desc_musicians) || defined($desc_additional_musicians) ) {
+	
+	my $desc_musicians2 = &description2musicians(\$artist_notes, $marc_record_ref);
+	if ( defined($desc_musicians) && defined($desc_musicians2) ) {
+	    print STDERR "TRY TO PAIR:\n  $desc_musicians vs\n  $desc_musicians\n";
 	    die();
 	}
-	$desc_musicians = &description2musicians(\$artist_notes, $marc_record_ref);
+	elsif ( defined($desc_musicians) ) {
+	    if ( $desc_musicians =~ /^Yhtyeen muut jäsenet: (.*)/ ) {
+		my $other_members = $1;
+		if ( $artist_notes =~ s/^(.*) ja (.*?)\.?$/$1 ja $2: $1, $other_members/ ) {
+		    #die($artist_notes);
+		    print STDERR "AN2: $artist_notes\n";
+		    normalize_musicians(\$artist_notes);
+		    print STDERR "AN3: $artist_notes\n";
+		    $desc_musicians = undef;
+		}
+	    }
+	    if ( defined($desc_musicians) ) {
+		die($desc_musicians);
+	    }
+	}
+	elsif ( defined($desc_musicians2) ) {
+	    $desc_musicians = $desc_musicians2;
+	}
+	
+	if ( defined($desc_additional_musicians) ) {
+	    die($desc_additional_musicians);
+	}
+
 	$desc_additional_musicians = &description2additional_musicians(\$artist_notes);
 	
 	if ( $artist_notes =~ /\S/ ) {
@@ -2545,12 +2582,13 @@ sub process_tempo_data2($$$$) {
 		die($desc_additional_musicians);
 	    }
 	    elsif ( defined($desc_musicians) ) {
-		print STDERR "AN: $artist_notes\n";
+		print STDERR "AN9: $artist_notes\n";
 		$artist_notes =~ s/\.$//;
-		if ( $desc_musicians =~ s/^Jäsenet:/$artist_notes:/ ) {
+		if ( $desc_musicians =~ s/^(Jäsenet):/$artist_notes:/ ) {
 		    $artist_notes = undef;
 		}
 		else {
+		    print STDERR "DM: $desc_musicians\n";
 		    die($artist_notes);
 		}
 	    }
