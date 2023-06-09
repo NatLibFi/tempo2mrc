@@ -203,20 +203,18 @@ sub get_tempo_title($$) {
 
 
 
+
+
 sub process_title($$$$$$$$) {
     my ( $tempo_title, $tempo_dataP, $marc_recordP, $languagesP, $tempo_record_id, $is_host, $t773_ref) = @_;
 
 
-    &process_title_incipit(\$tempo_title, $marc_recordP);
-    my $subtitle = undef;
-
-
-
-    
     # Get subtitle and author information (if any) from host:
     # (I want to do this first, before article movements etc,
     # as this section seems relatively stable.)
     print STDERR "TITLE '$tempo_title'\n";
+    my @titles = ();
+    my @subtitles = ();
     my $f245c = undef;
     if ( $is_host ) {
 	# 245$b/subtitle for host (type 1):
@@ -225,11 +223,11 @@ sub process_title($$$$$$$$) {
 	    my $subtitle_part = $2;
 	    if ( $subtitle_part =~ /[a-z]/ ) { # subtitle-ish
 		$tempo_title = $title_part;
-		$subtitle = $subtitle_part;
+		$subtitles[0] = $subtitle_part;
 	    }
 	}
 	# TODO: SILENCE (Minimalist piano music from Finland & Sweden)
-
+	
 	# 245$c:
 	if ( $tempo_title =~ s/^([^ :a-z]+): ([^a-z]+)$/$2/ ||
 	     $tempo_title =~ s/^($iso_kirjain+(?: $iso_kirjain+)+): ([^a-z]+)$/$2/ ) {
@@ -240,84 +238,123 @@ sub process_title($$$$$$$$) {
 	    print STDERR "WARNING\tNON-CAP HOST TITLE: '$tempo_title'\n";
 	}
 	$tempo_title = tempo_ucfirst_lcrest($tempo_title);
+	$titles[0] = $tempo_title;
+
     }
+    else {    
+	my @title_parts = ();
+	if ( !$is_host && $tempo_title =~ /^\d+. .* \. - \d+\. / ) {
+	    while ( $tempo_title =~ s/^(\d+\. .*?\.) - (\d+\. )/$2/ ) {
+		my $part = $1;
+		push(@title_parts, $part);
+	    }
+	}
+	push(@title_parts, $tempo_title); # Add last part (or the whole title)
+	
+
+	for ( my $i=0; $i < scalar(@title_parts); $i++ ) {
+	    my $curr_title = $title_parts[$i];
+	    my $curr_subtitle = undef;
+	    &process_title_incipit(\$curr_title, $marc_recordP);
     
+	    # Articles. Source of much headache...
+	    # Simple cases first:
+	    # NB: "AUTHOR: TITLE, THE" would not work
+	    $curr_title = normalize_title($curr_title);
+	    # NB! Incipit has already been extracted!
+
+	    my $hakuapu = extract_hakuapu(\$curr_title);
+	    if ( defined($hakuapu) ) {
+		$hakuapu =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
+		add_marc_field($marc_recordP, '500', "  \x1FaHakuapu: ".$hakuapu);
+		if ( !$robust ) {
+		    # Sanity check: can't have two hakuapus:
+		    $hakuapu = extract_hakuapu(\$curr_title);
+		    if ( defined($hakuapu) ) { die(); }
+		}
+	    }
+
+	    my $analytical_title = extract_analytical_title(\$curr_title);
+	    if ( defined($analytical_title) ) {
+		if ( $debug ) {
+		    print STDERR "Looking at analytical title '$analytical_title'\n";
+		}
+		my $tassa = extract_tassa(\$analytical_title);
+		if ( defined($tassa) && length($tassa) ) {
+		    $tassa =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
+		    add_marc_field($marc_recordP, '500', "  \x1FaHakuapu: ".$tassa);
+		}
+		
+		add_marc_field($marc_recordP, '740', "02\x1Fa${analytical_title}");
+	    
+		if ( !$robust ) {
+		    # Sanity check: can't have two hakuapus:
+		    $analytical_title = extract_analytical_title(\$curr_title);
+		    if ( defined($analytical_title) ) { die(); }
+		}
+	    }
 
     
-    # Articles. Source of much headache...
-    # Simple cases first:
-    # NB: "AUTHOR: TITLE, THE" would not work
-    $tempo_title = normalize_title($tempo_title);
-
-    # NB! Incipit has already been extracted!
-
-    my $hakuapu = extract_hakuapu(\$tempo_title);
-    if ( defined($hakuapu) ) {
-	$hakuapu =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
-	add_marc_field($marc_recordP, '500', "  \x1FaHakuapu: ".$hakuapu);
-	if ( !$robust ) {
-	    # Sanity check: can't have two hakuapus:
-	    $hakuapu = extract_hakuapu(\$tempo_title);
-	    if ( defined($hakuapu) ) { die(); }
-	}
-    }
-
-    my $analytical_title = extract_analytical_title(\$tempo_title);
-    if ( defined($analytical_title) ) {
-	if ( $debug ) {
-	    print STDERR "Looking at analytical title '$analytical_title'\n";
-	}
-	my $tassa = extract_tassa(\$analytical_title);
-	if ( defined($tassa) && length($tassa) ) {
-	    $tassa =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
-	    add_marc_field($marc_recordP, '500', "  \x1FaHakuapu: ".$tassa);
-	}
-
-	add_marc_field($marc_recordP, '740', "02\x1Fa${analytical_title}");
-
-	if ( !$robust ) {
-	    # Sanity check: can't have two hakuapus:
-	    $analytical_title = extract_analytical_title(\$tempo_title);
-	    if ( defined($analytical_title) ) { die(); }
-	}
-    }
-
+	    while ( my $tassa = extract_tassa(\$curr_title) ) {
+		if ( $tassa !~ /\.$/ ) { $tassa .= '.'; }
+		$tassa =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
+		add_marc_field($marc_recordP, '500', "  \x1FaNimekehuomautus: ".$tassa);
+	    }
+	    if ( !$robust ) {
+		if ( $curr_title =~ /(hakuapu|\/tässä)/ ) {
+		    die("Title requires further processing: '$curr_title'");
+		}
+	    }
+	    
+	    my $title = trim_ends($curr_title);
     
-    while ( my $tassa = extract_tassa(\$tempo_title) ) {
-	if ( $tassa !~ /\.$/ ) { $tassa .= '.'; }
-	$tassa =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
-	add_marc_field($marc_recordP, '500', "  \x1FaNimekehuomautus: ".$tassa);
-    }
-    if ( !$robust ) {
-	if ( $tempo_title =~ /(hakuapu|\/tässä)/ ) {
-	    die("Title requires further processing: '$tempo_title'");
+	    if ( $title =~ /  / ) { # Is this valid subfield identifier?
+		if ( !$robust && $title =~ /  \S.*  / ) { die(); }
+		if ( !$robust && $curr_subtitle ) { die(); }
+		( $title, $curr_subtitle ) = split(/  +/, $title);
+	    }
+	    if ( length($title) == 0 ) { die(); }
+	    
+	    $titles[$i] = $title;
+	    $subtitles[$i] = $curr_subtitle;
 	}
     }
 
-    my $title = trim_ends($tempo_title);
+    create_marc_field245(\@titles, \@subtitles, $f245c, $languagesP, $marc_recordP, $tempo_record_id, $t773_ref);
+}
+
+
+sub create_marc_field245($$$$$$$) {
+    my ( $titles_ref, $subtitles_ref, $f245c, $languages_ref, $marc_record_ref, $tempo_record_id, $t773_ref) = @_;
+    my @titles = @{$titles_ref};
+    my @subtitles = @{$subtitles_ref};
     
-    if ( $title =~ /  / ) { # Is this valid subfield identifier?
-	if ( !$robust && $title =~ /  \S.*  / ) { die(); }
-	if ( !$robust && $subtitle ) { die(); }
-	( $title, $subtitle ) = split(/  +/, $title);
+    my $languagestr = join("\t", @{$languages_ref});
+    my $ind2 = &article_length($titles[0], $languagestr);
+    my $f245 = "0$ind2\x1Fa";
+    my $bsep = "\x1Fb";
+    for ( my $i=0; $i < scalar(@titles); $i++ ) {
+	    if ( $i > 0 ) {
+		$f245 .= " ;$bsep";
+		$bsep = " ";
+	    }
+	    $f245 .=  $titles[$i];
+	    if ( defined($subtitles[$i]) ) {
+		$f245 .= " :$bsep".$subtitles[$i];
+		$bsep = " ";
+	    }
+	    
     }
-    if ( length($title) == 0 ) { die(); }
 
-    my $languagestr = join("\t", @{$languagesP});
-    my $ind2 = &article_length($title, $languagestr);
-    my $f245 = "0$ind2\x1Fa$title"; # ind1 is handled in postprocessing...
-
-    if ( defined($subtitle) ) { $f245 .= " :\x1Fb$subtitle"; }
     if ( defined($f245c) ) { $f245 .= " /\x1Fc$f245c"; }
     # TODO? 245$c?
     if ( $f245 !~ /\.$/ ) { $f245 .= "."; }
     
-    add_marc_field($marc_recordP, '245', $f245);
+    add_marc_field($marc_record_ref, '245', $f245);
     if ( $tempo_record_id ) {
-	my $val = $title;
-	if ( defined($subtitle) ) { $val .= " : $subtitle"; }
-	if ( defined($f245c) ) { $val .= " / $f245c"; }
-	${$t773_ref}{$tempo_record_id} = $val;
+	$f245 =~ s/^..\x1Fa//;
+	$f245 =~ s/\x1F./ /g;
+	${$t773_ref}{$tempo_record_id} = $f245;
     }
     
 }
