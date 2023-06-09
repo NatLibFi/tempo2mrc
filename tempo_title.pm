@@ -49,6 +49,20 @@ sub extract_hakuapu($) {
     return undef;
 }
 
+sub hakuapu2field500($$) {
+    my ( $title_ref, $marc_record_ref ) = @_;
+    my $hakuapu = extract_hakuapu($title_ref);
+    if ( defined($hakuapu) ) {
+	$hakuapu =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
+	add_marc_field($marc_record_ref, '500', "  \x1FaHakuapu: ".$hakuapu);
+	if ( !$robust ) {
+	    # Sanity check: can't have two hakuapus:
+	    $hakuapu = extract_hakuapu($title_ref);
+	    if ( defined($hakuapu) ) { die(); }
+	}
+    }
+}
+
 sub extract_incipit($) {
     my $titleP = shift();
     my $orig_title = ${$titleP};
@@ -256,23 +270,12 @@ sub process_title($$$$$$$$) {
 	    my $curr_title = $title_parts[$i];
 	    my $curr_subtitle = undef;
 	    &process_title_incipit(\$curr_title, $marc_recordP);
-    
+	    &hakuapu2field500(\$curr_title, $marc_recordP);
+	    
 	    # Articles. Source of much headache...
 	    # Simple cases first:
 	    # NB: "AUTHOR: TITLE, THE" would not work
 	    $curr_title = normalize_title($curr_title);
-	    # NB! Incipit has already been extracted!
-
-	    my $hakuapu = extract_hakuapu(\$curr_title);
-	    if ( defined($hakuapu) ) {
-		$hakuapu =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
-		add_marc_field($marc_recordP, '500', "  \x1FaHakuapu: ".$hakuapu);
-		if ( !$robust ) {
-		    # Sanity check: can't have two hakuapus:
-		    $hakuapu = extract_hakuapu(\$curr_title);
-		    if ( defined($hakuapu) ) { die(); }
-		}
-	    }
 
 	    my $analytical_title = extract_analytical_title(\$curr_title);
 	    if ( defined($analytical_title) ) {
