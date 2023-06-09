@@ -103,6 +103,16 @@ sub extract_tassa($) {
     return undef;
 }
 
+sub tassa2field500($$) {
+    my ( $title_ref, $marc_record_ref ) = @_;
+
+    while ( my $tassa = extract_tassa($title_ref) ) {
+	if ( $tassa !~ /\.$/ ) { $tassa .= '.'; }
+	$tassa =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
+	add_marc_field($marc_record_ref, '500', "  \x1FaNimekehuomautus: ".$tassa);
+    }
+}
+
 sub extract_analytical_title($) {
     my $titleP = shift();
     my $orig_title = ${$titleP};
@@ -119,6 +129,30 @@ sub extract_analytical_title($) {
     }
     return undef;
 }
+
+sub analytical_title2field740($$) {
+    my ( $title_ref, $marc_record_ref ) = @_;
+    my $analytical_title = extract_analytical_title($title_ref);
+    if ( defined($analytical_title) ) {
+	if ( $debug ) {
+	    print STDERR "Looking at analytical title '$analytical_title'\n";
+	}
+	my $tassa = extract_tassa(\$analytical_title);
+	if ( defined($tassa) && length($tassa) ) {
+	    $tassa =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
+	    add_marc_field($marc_record_ref, '500', "  \x1FaHakuapu: ".$tassa);
+	}
+		
+	add_marc_field($marc_record_ref, '740', "02\x1Fa${analytical_title}");
+	
+	if ( !$robust ) {
+	    # Sanity check: can't have two hakuapus:
+	    $analytical_title = extract_analytical_title($title_ref);
+	    if ( defined($analytical_title) ) { die(); }
+	}
+    }
+}
+
 
 sub process_title_incipit($$) {
     my ( $tempo_titleP, $marc_recordP ) = @_;
@@ -231,6 +265,7 @@ sub process_title($$$$$$$$) {
     my @subtitles = ();
     my $f245c = undef;
     if ( $is_host ) {
+	&hakuapu2field500(\$tempo_title, $marc_recordP);
 	# 245$b/subtitle for host (type 1):
 	if ( $tempo_title =~ /^([^a-z]+) - (.*)$/ ) {
 	    my $title_part = $1;
@@ -277,32 +312,10 @@ sub process_title($$$$$$$$) {
 	    # NB: "AUTHOR: TITLE, THE" would not work
 	    $curr_title = normalize_title($curr_title);
 
-	    my $analytical_title = extract_analytical_title(\$curr_title);
-	    if ( defined($analytical_title) ) {
-		if ( $debug ) {
-		    print STDERR "Looking at analytical title '$analytical_title'\n";
-		}
-		my $tassa = extract_tassa(\$analytical_title);
-		if ( defined($tassa) && length($tassa) ) {
-		    $tassa =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
-		    add_marc_field($marc_recordP, '500', "  \x1FaHakuapu: ".$tassa);
-		}
-		
-		add_marc_field($marc_recordP, '740', "02\x1Fa${analytical_title}");
-	    
-		if ( !$robust ) {
-		    # Sanity check: can't have two hakuapus:
-		    $analytical_title = extract_analytical_title(\$curr_title);
-		    if ( defined($analytical_title) ) { die(); }
-		}
-	    }
+	    &analytical_title2field740(\$curr_title, $marc_recordP);
 
+	    &tassa2field500(\$curr_title, $marc_recordP);
     
-	    while ( my $tassa = extract_tassa(\$curr_title) ) {
-		if ( $tassa !~ /\.$/ ) { $tassa .= '.'; }
-		$tassa =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
-		add_marc_field($marc_recordP, '500', "  \x1FaNimekehuomautus: ".$tassa);
-	    }
 	    if ( !$robust ) {
 		if ( $curr_title =~ /(hakuapu|\/tässä)/ ) {
 		    die("Title requires further processing: '$curr_title'");
