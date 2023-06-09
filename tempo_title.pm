@@ -68,12 +68,13 @@ sub extract_incipit($) {
 sub extract_tassa($) {
     my $titleP = shift();
     my $orig_title = ${$titleP};
-    # "/tässä: jotainkin /" tai "/tässä: foo$/
+    # "/tässä: jotakin /" tai "/tässä: foo$/
 
     # 20230410: "(tässä: ...)" should come first as we have:
     # 62bd2b86677ce600345ec0f3.json:"title": "Romansseja (tässä: Drei Romanzen, Kolme romanssia) oboelle /tässä KLARINETILLE/ ja pianolle op.94 /S/.",
-    if ( ${$titleP} =~ s/ \(tässä: ([^\(\)]+)\)($|\.| )/$2/ ||
-	 ${$titleP} =~ s/\/tässä:? *([^\/]+)($|\/)// ) {
+    if (${$titleP} =~ s/ \(tässä: ([^\(\)]+)\)\.?$// ||
+	( ${$titleP} =~ s/ \(tässä: ([^\(\)]+)\)(\.? )/$2/ && die() ) ||
+	${$titleP} =~ s/\/tässä:? *([^\/]+)($|\/)// ) {
 	# Added pm 2022-09-22. Reason 627e1ff64b6d9c01ab9968d3
 	
 	my $tassa = $1;
@@ -205,7 +206,12 @@ sub get_tempo_title($$) {
 sub process_title($$$$$$$$) {
     my ( $tempo_title, $tempo_dataP, $marc_recordP, $languagesP, $tempo_record_id, $is_host, $t773_ref) = @_;
 
+
+    &process_title_incipit(\$tempo_title, $marc_recordP);
     my $subtitle = undef;
+
+
+
     
     # Get subtitle and author information (if any) from host:
     # (I want to do this first, before article movements etc,
@@ -300,6 +306,7 @@ sub process_title($$$$$$$$) {
     my $languagestr = join("\t", @{$languagesP});
     my $ind2 = &article_length($title, $languagestr);
     my $f245 = "0$ind2\x1Fa$title"; # ind1 is handled in postprocessing...
+
     if ( defined($subtitle) ) { $f245 .= " :\x1Fb$subtitle"; }
     if ( defined($f245c) ) { $f245 .= " /\x1Fc$f245c"; }
     # TODO? 245$c?

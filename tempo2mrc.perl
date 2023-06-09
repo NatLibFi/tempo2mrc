@@ -2502,6 +2502,7 @@ sub process_tempo_data2($$$$) {
     my $tempo_title = get_tempo_title($prefix, $tempo_data_ref);
     my $max_disc_number = get_max_seen_disc_number($tempo_data_ref);
     # HOST has like "TITLE (2CD)"
+
     my $media_as_per_title = ( !$is_host || !defined($tempo_title) ? undef : &extract_media_from_title(\$tempo_title, $max_disc_number));
 
 
@@ -2815,10 +2816,9 @@ sub process_tempo_data2($$$$) {
 	}
     }
 
-    # FIELD 031: extract incipit from title
-    if ( defined($tempo_title) ) {
-	process_title_incipit(\$tempo_title, $marc_record_ref);
-    }
+#    if ( defined($tempo_title) ) {
+#	process_title_incipit(\$tempo_title, $marc_record_ref);
+#    }
 
     # 033 is done together with 518. Check it there
 
