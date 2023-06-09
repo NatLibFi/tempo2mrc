@@ -122,7 +122,7 @@ sub extract_pseudonym_from_full_name($) {
 
     # Pseudonym, identity included:
     if ( ${$full_name_ref} =~ s/ *\/pseud \/ \(= *([^\)]+)\) */ / ||
-	 ${$full_name_ref} =~ s/ \(pseud\) \(= *([^\)]+)\) */ / ) {
+	 ${$full_name_ref} =~ s/ \(pseud *\) \(= *([^\)]+)\) */ / ) {
 
 	return $1;
     }
