@@ -2226,7 +2226,8 @@ sub process_origin($$$) {
     my $origin = get_single_entry($path, $tempo_dataP);
     if ( defined($origin) && $origin ne "" ) {
 	my $original_origin = $origin;
-	$origin =~ s/^kansalliset vähemmistöt:\s*//i;
+	# 648ac93c92843a0c35aca2c3.json:"origin": "lnsalliset vähemmistöt: suomenruotsalaiset"
+	$origin =~ s/^(kan|ln)salliset vähemmistöt:\s*//i;
 	$origin =~ s/ \(\S+\)$//; # Seen only "(Suomi)" and "(Ruotsi)" so far
 	# Now we should have only the term left.
 	my $yso_id =  new_pref_label2unambiguous_id($origin, 'yso', 'fin');
@@ -3063,6 +3064,7 @@ sub process_tempo_data {
 
 sub process_tempo_file($) {
     my $filename = shift;
+    print STDERR "Processing file $filename...\n";
     my $file_as_string = &file2string($filename);
     $file_as_string =~ s/\&amp;/&/g;
     my @tempo_data = json2tempo_data_string_array($file_as_string); 
@@ -3234,13 +3236,18 @@ sub fix_300a($) {
 	if ( $host300->{content} =~ /\x1Fa(\d+)/ ) {
 	    my $host_levy = $1;
 	    if ( $host_levy < $max_levy ) {
-		print STDERR "FIX300\$a:\n  ", $host300->toString(), " =>\n";
+		print STDERR "FIX300\$a (MAX=$max_levy):\n  ", $host300->toString(), " =>\n";
 		if ( $host300->{content} =~ s/\x1Fa\d+ (C-kasettia|CD-äänilevyä|äänilevyä)/\x1Fa$max_levy ${1}/ ||
 		     $host300->{content} =~ s/\x1Fa1 (CD-äänilevy)/\x1Fa$max_levy ${1}ä/ ) {
 		    print STDERR "  ", $host300->toString(), "\n";
 		    return;
 		}
-		die($host300);
+		elsif ( $host300->{content} =~ /\x1Fa\d+ verkkoaineisto/ ) {
+		    # Uh..
+		    # 649013b51ed7a82614cbd644.json (Has track "Hyvästi" twice, supposedly has disc2...
+		    return;
+		}
+		die($host300->toString());
 	    }
 	}
     }
