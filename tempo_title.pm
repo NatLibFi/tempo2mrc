@@ -82,13 +82,20 @@ sub extract_incipit($) {
 sub extract_tassa($) {
     my $titleP = shift();
     my $orig_title = ${$titleP};
+
+    my $tassa = undef;
+	
     # "/tässä: jotakin /" tai "/tässä: foo$/
 
+
+    
     # 20230410: "(tässä: ...)" should come first as we have:
     # 62bd2b86677ce600345ec0f3.json:"title": "Romansseja (tässä: Drei Romanzen, Kolme romanssia) oboelle /tässä KLARINETILLE/ ja pianolle op.94 /S/.",
     if (${$titleP} =~ s/ \(tässä: ([^\(\)]+)\)\.?$// ||
 	( ${$titleP} =~ s/ \(tässä: ([^\(\)]+)\)(\.? )/$2/ && die() ) ||
-	${$titleP} =~ s/\/tässä:? *([^\/]+)($|\/)// ) {
+	${$titleP} =~ s/ \/tässä[ :] *([^\/]+ \/S\/)\.$/./ ||
+	${$titleP} =~ s/ \/tässä[ :] *([^\/]+)\.$/./ ||
+	${$titleP} =~ s/\/tässä:? *([^\/]+)($|\/)/$2/ ) {
 	# Added pm 2022-09-22. Reason 627e1ff64b6d9c01ab9968d3
 	
 	my $tassa = $1;
@@ -107,8 +114,16 @@ sub tassa2field500($$) {
     my ( $title_ref, $marc_record_ref ) = @_;
 
     while ( my $tassa = extract_tassa($title_ref) ) {
+	print STDERR "TÄSSÄ: $tassa\n";
+	if ( $tassa =~ s/ \/S\/$// ) {
+	    # TODO: these could go to field 388?
+	    #die();
+	}
+	
 	if ( $tassa !~ /\.$/ ) { $tassa .= '.'; }
 	$tassa =~ s/([a-z0-9]|å|ä|ö)$/$1./gi;
+
+
 	add_marc_field($marc_record_ref, '500', "  \x1FaNimekehuomautus: ".$tassa);
     }
 }
@@ -304,6 +319,8 @@ sub process_title($$$$$$$$) {
 	for ( my $i=0; $i < scalar(@title_parts); $i++ ) {
 	    my $curr_title = $title_parts[$i];
 	    my $curr_subtitle = undef;
+
+	    $curr_title =~ s/ \(K: [^\(\)]+\)//;
 	    &process_title_incipit(\$curr_title, $marc_recordP);
 	    &hakuapu2field500(\$curr_title, $marc_recordP);
 	    
