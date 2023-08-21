@@ -1293,8 +1293,9 @@ sub tempo_author_to_marc_field($$$) {
 	    # TODO: check whether FIN11 auth record contains $c pseudonym
 	    # $c: pseudonyms from Tempo data and FIN11:
 
+	    # Stage names are de-factor standard-ish, that we don't mark them:
 	    if ( is_pseudonym($author_ref) ) {
-		$content .= ",\x1Fcsalanimi";
+		# $content .= ",\x1Fcsalanimi";
 	    }
 
 
