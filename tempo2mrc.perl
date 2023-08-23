@@ -1114,7 +1114,7 @@ sub process_performer_note($$$$$) {
 	}
 
 	# The two 511 fields are logically separate or sumthing... Keep both:
-	print STDERR "MULTI-511 ERROR/WARNING #1 for '", kk_marc21_field::fieldToString($f511), "':\n  '", ${$field_511_content_ref}, "'\n  '$content'\n";
+	print STDERR "MULTI-511 ERROR/WARNING #1 for '", kk_marc21_field::fieldToString($f511), "':\n  '", kk_marc21_field::fieldToString(${$field_511_content_ref}), "'\n  '", kk_marc21_field::fieldToString($content), "'\n";
 
 	# Fallback: keep ${$field_511_content_ref} as it was,
 	# and add this field as a separate field:
@@ -2235,6 +2235,7 @@ sub process_origin($$$) {
 	    my $tmp = $origin;
 	    $tmp =~ s/nen$/set/;
 	    print STDERR "NB\tOrigin: Trying '$tmp' as an alternative for '$tmp'/'$origin'\n";
+	    $origin = $tmp;
 	    $yso_id = new_pref_label2unambiguous_id($tmp, 'yso', 'fin');
 	}
 	if ( !$yso_id ) {
@@ -2245,7 +2246,7 @@ sub process_origin($$$) {
 	    print "WARNING\t$msg\n";
 	}
 	else {
-	    my $content = "  \x1FmEtnisyys\x1Fneth\x1Fa".$origin."\x1F2yso/fin\x1F0http:\/\/www.yso.fi\/onto\/yso\/p".$yso_id;
+	    my $content = "  \x1FmEtnisyys\x1Fneth\x1Fa".$origin."\x1F2yso/fin\x1F0http:\/\/www.yso.fi\/onto\/yso\/".$yso_id;
 	    add_marc_field($marc_recordP, '386', $content);
 	}
 
@@ -2934,12 +2935,12 @@ sub process_tempo_data2($$$$) {
     # $prefix/descriptions
 
 
-    print STDERR "FÖRBÖR: '", $field_511_content, "'\n";
+    print STDERR "FÖRBÖR: '", kk_marc21_field::fieldToString($field_511_content), "'\n";
     
     &process_description($is_host, $prefix, $tempo_data_ref, $marc_record_ref, \$description, \$field_511_content);
 
     if ( $field_511_content ) {
-	print STDERR "FÖRBÖR2: ", $field_511_content, "\n";
+	print STDERR "FÖRBÖR2: ", kk_marc21_field::fieldToString($field_511_content), "\n";
 	add_marc_field($marc_record_ref, '511', $field_511_content);
     }
     
