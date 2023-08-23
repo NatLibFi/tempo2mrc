@@ -24,6 +24,7 @@ use tempo_utils; # unlike other tempo_* files this contains generic funcs
 use tempo_recording_location_details;
 use tempo_artists_ownerships;
 
+
 my $dd_regexp = get_dd_regexp();
 my $mm_regexp = get_mm_regexp();
 my $yyyy_regexp = get_yyyy_regexp();
@@ -3080,6 +3081,7 @@ sub process_tempo_file($) {
 ###########
 
 
+
 &init_config();    
 
 my @input_files;
@@ -3119,19 +3121,35 @@ sub get_required_but_missing_directories($) {
 # Check output directory:
 if ( defined($output_directory) ) {
     my @missing_dirs = get_required_but_missing_directories($output_directory);
-    if ( $#missing_dirs > -1 ) {
-	# Should we create them dirs?
-	print STDERR "Problematic output dir(s): ", join(", ", @missing_dirs), "\n";
-	exit(-1);
+    if ( scalar(@missing_dirs) > 0 ) {
+	if ( scalar(@missing_dirs) == 3 ) {
+	    print STDERR "Create directory $output_directory\n";
+	    mkdir($output_directory) or die();
+	    mkdir("$output_directory/json") or die();
+	    mkdir("$output_directory/marc") or die();
+	}
+	else {
+	    # Should we create them dirs?
+	    print STDERR "Problematic output dir(s): ", join(", ", @missing_dirs), "\n";
+	    exit(-1);
+	}
     }
 }
 
 # Check error directory:
 if ( defined($error_directory) ) {
     my @missing_dirs = get_required_but_missing_directories($error_directory);
-    if ( $#missing_dirs > -1 ) {
-	print STDERR "Problematic error dir(s): ", join(", ", @missing_dirs), "\n";
-	exit(-1);
+    if ( scalar(@missing_dirs) > 0 ) {
+	if ( scalar(@missing_dirs) == 3 ) {
+	    print STDERR "Create directory $error_directory\n";
+	    mkdir($error_directory) or die();
+	    mkdir("$error_directory/json") or die();
+	    mkdir("$error_directory/marc") or die();
+	}
+	else {
+	    print STDERR "Problematic error dir(s): ", join(", ", @missing_dirs), "\n";
+	    exit(-1);
+	}
     }
 }
 
