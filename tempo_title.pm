@@ -91,8 +91,10 @@ sub extract_tassa($) {
     
     # 20230410: "(tässä: ...)" should come first as we have:
     # 62bd2b86677ce600345ec0f3.json:"title": "Romansseja (tässä: Drei Romanzen, Kolme romanssia) oboelle /tässä KLARINETILLE/ ja pianolle op.94 /S/.",
+    # Might lose some information, but we really can't hande the content
+    # without world knowledge...
     if (${$titleP} =~ s/ \(tässä: ([^\(\)]+)\)\.?$// ||
-	( ${$titleP} =~ s/ \(tässä: ([^\(\)]+)\)(\.? )/$2/ && die() ) ||
+	${$titleP} =~ s/ \(tässä: ([^\(\)]+)\)(\.? )/$2/ ||
 	${$titleP} =~ s/ \/tässä[ :] *([^\/]+ \/S\/)\.$/./ ||
 	${$titleP} =~ s/ \/tässä[ :] *([^\/]+)\.$/./ ||
 	${$titleP} =~ s/\/tässä:? *([^\/]+)($|\/)/$2/ ) {
