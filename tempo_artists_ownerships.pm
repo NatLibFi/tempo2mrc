@@ -92,6 +92,15 @@ my %normalize_instrument_hash = (
     
     );
 
+sub is_bandlike_name($) {
+    my ( $name ) = @_;
+    if ( $name =~ /('s |choir|ensemble|(?:f|ph)ilharmoni|kuoro|kvintett|orcheste?r|orkester|yhtye|[\!\?\&])/i ||
+	 $name =~ /((^| )(and|band|duo|ja|och|of|orchestra|project|sinfonia|symphony|the|trio)($| ))/i ) {
+	return 1;
+    }
+    return 0;
+}
+
 sub normalize_instrument($$) {
     my ( $instrument, $marc_record_ref ) = @_;
     if ( defined($normalize_instrument_hash{$instrument}) ) {
@@ -206,7 +215,12 @@ sub process_tempo_full_name($) {
     # '4th Line Horn Quartet (4th Line-käyrätorvikvartetti)' =>
     # '4th Line Horn Quartet' =>
     while ( $name =~ s/(\S) *(\([^=\)][^\)]+\)) *$/$1/ ) { 
-	print STDERR "Remove '$2' from '$name'\n";
+	my $part = $2;
+	print STDERR "Remove '$part' from '$name'\n";
+	if ( !defined($data{'yhtye'}) && &is_bandlike_name($part) ) {
+	    $data{'yhtye'} = $part;
+	}
+	
     }
 
     if ( $name =~ /(\/|\()/ ) {
@@ -600,9 +614,6 @@ sub get_tempo_authors($$$$$) {
 	}
     }
 
-
-
-
     # Handle additional musicians
     if ( defined($additional_musicians) ) {
 	if ( length($f511) > 0 ) {
@@ -615,7 +626,7 @@ sub get_tempo_authors($$$$$) {
     
     if ( $f511 ) {
 	print STDERR "511 = '$f511'\n";
-	$f511 = "0 \x1Fa$f511.";
+
 
 	if ( ${$field_511_content_ref} ) {
 	    # We have an existing data for field 511 as well. Merge them? Skip this?
@@ -628,6 +639,7 @@ sub get_tempo_authors($$$$$) {
 		return;
 	    }
 
+	    $f511 = "0 \x1Fa$f511.";
 	    # The two 511 fields are logically separate or sumthing... Keep both:
 	    print STDERR "MULTI-511 ERROR/WARNING #1 for $f511:\n  '", ${$field_511_content_ref}, "'\n  '$f511'\n";
 	    
@@ -643,6 +655,7 @@ sub get_tempo_authors($$$$$) {
 	    }
 	}
 	else {
+	    $f511 = "0 \x1Fa$f511.";
 	    ${$field_511_content_ref} = $f511;
 	}	
     }
@@ -1011,10 +1024,9 @@ sub educated_guess_is_person($) {
 
     # TODO: "The bands" etc
 
-    if ( $name =~ /('s |choir|ensemble|kuoro|kvintett|orchester|orkester|yhtye|[\!\?\&])/i ||
-	 $name =~ /((^| )(and|band|duo|ja|och|of|orchestra|project|the|trio)($| ))/i ) {
+    if ( &is_bandlike_name($name) ) {
 	if ( $debug ) {
-	    print STDERR "Educated X00/X10 guess for '$name': band (reason: '$1')\n";
+	    print STDERR "Educated X00/X10 guess for '$name'\n";
 	}
 	return 0;
     }
