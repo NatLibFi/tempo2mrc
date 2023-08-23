@@ -1135,11 +1135,11 @@ sub X00_ind1_and_subfield_a($) {
 	# Jannika B etc
 	return "0 \x1Fa$name";
     }
-    if ( $name =~ /^$etunimi_regexp $iso_kirjain\.?$/ ||
+    if ( $name =~ /^$etunimi_regexp $iso_kirjain\.$/ ||
 	# Sorry hacks:
 	 $name =~ /^(Ramses II)$/ ) {
-	if ( !$robust && $name !~ /^(Joel L\.|Ramses II)$/ ) {
-	    die($name);
+	if ( $name =~ /\.$/ ) {
+	    print STDERR "WARNING\tAssuming '.' is part of the name: '$name'\n";
 	}
 	return "0 \x1Fa$name";
     }
