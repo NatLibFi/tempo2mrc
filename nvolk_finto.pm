@@ -87,9 +87,9 @@ foreach my $curr_lex ( @supported_lexica ) {
     # Thus we do this here a bit counterintuitively
     foreach my $curr_label ( @{$supported_labels{$curr_lex}} ) {
 	$lexica{$curr_lex}{$curr_label} = ();
-	print STDERR "ADD $curr_lex/$curr_label...\n";
+	#print STDERR "ADD $curr_lex/$curr_label...\n";
 	foreach my $curr_lang ( @{$supported_languages{$curr_lex}} ) {
-	    print STDERR "ADD $curr_lex/$curr_label/$curr_lang\n";
+	    #print STDERR "ADD $curr_lex/$curr_label/$curr_lang\n";
 	    $lexica{$curr_lex}{$curr_label}{$curr_lang} = ();
 	    $lexica{$curr_lex}{$curr_label}{$curr_lang}{'term2id'} = ();
 	    $lexica{$curr_lex}{$curr_label}{$curr_lang}{'id2term'} = ();
