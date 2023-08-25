@@ -523,10 +523,11 @@ sub get_tempo_authors($$$$$) {
 			    # of non-humanness... Didn't work out as humans
 			    # can have it as well...
 			    # However, yhtye:-duo has been ok so far..
-			    if ( $val =~ /^yhtye:-(duo|trio)$/ ) {
-				$authors{$id}{'yhtye'} = 1;
+			    if ( $val =~ /^yhtye:-(duo|trio)$/ ||
+				 $val =~ /^(.*kuoro)$/ ) {
+				$authors{$id}{'yhtye'} = $1;
 			    }
-			    elsif ( $val eq 'johtaja' || $val eq 'kuoronjohtaja' || $val eq 'orkesterinjohtaja' ) {
+			    elsif ( $val =~ /johtaja$/ ) {
 				$authors{$id}{'johtaja'} = $val;
 			    }
 			    elsif ( $val =~ /johtaja/ ) { die($val); }
