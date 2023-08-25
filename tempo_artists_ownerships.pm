@@ -81,6 +81,7 @@ my %normalize_instrument_hash = (
     'laulu:-rap' => 'räppäys',
     'lauluyhtye:-lauluduo' => 'lauluyhtye',
     'orkesteri:-big-band' => 'big band',
+    'puhe: lausunta' => 'puheääni',
     'puhe:-lausunta' => 'puheääni',
     'tekninen-toteutus' => 'tekninen toteutus',
     'tekninen---toteutus' => 'tekninen toteutus',
