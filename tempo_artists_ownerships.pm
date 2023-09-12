@@ -785,10 +785,7 @@ sub get_best_author($$$) {
 
     my @auth_ids = sort { $authors{$b}{'index'} <=> $authors{$a}{'index'} } keys %authors; # TODO: How about getting 'em in some priority order?
 
-    # If there's only one author in the record, make it 1XX:
-    if ( scalar(@auth_ids) == 1 ) {
-	return $auth_ids[0];
-    }
+
 
     # Debugging crap
     if ( 0 ) {
@@ -802,7 +799,6 @@ sub get_best_author($$$) {
 	}
     }
 
-
     # Comp: use first composer (or nothing):
     if ( !$is_host ) {
 	my @composer_ids = function2ids($authors_ref, 'säveltäjä');
@@ -813,6 +809,11 @@ sub get_best_author($$$) {
     }
     
     # Hosts
+    # If there's only one author in the record, make it 1XX:
+    if ( scalar(@auth_ids) == 1 ) {
+	return $auth_ids[0];
+    }
+
     if ( $is_classical_music ) {
 	# TM: "Ohje on, että taidemusiikkiemossa 1XX:ään tulee ainoa pääesittäjä, jos julkaisun teoksilla ei ole yhtä yhteistä säveltäjää (tämä olisi kai ilmoitettu Tempo-emossakin)."	
 	my @composer_ids = function2ids($authors_ref, 'säveltäjä');
@@ -1274,7 +1275,7 @@ sub tempo_author_to_marc_field($$$) {
     my %author = %{$author_ref};
 
     my $name = $author{'name'};
-    print STDERR "tatmf...\n";
+    print STDERR "tatmf $hundred...\n";
     my $asteri_record = &tempo_author2asteri_record($author_ref);
     my $ten = $author_ref->{'ten'};
     
