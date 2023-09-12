@@ -2862,11 +2862,13 @@ sub process_tempo_data2($$$$) {
 	    &add_REP_skip($marc_record_ref);
 	}
 	$field_511_content = "0 \x1Fa$desc_musicians";
+	
+	#print STDERR "IM511A: '", kk_marc21_field::fieldToString($field_511_content), "'\n"; 
     }
    
     # MARC21: 1X0, 7X0 (FONO: ... )
     &process_tempo_authors($prefix, $tempo_data_ref, $marc_record_ref, $is_classical_music, $is_host, \$field_511_content, $desc_additional_musicians);
-
+    #print STDERR "IM511B: '", kk_marc21_field::fieldToString($field_511_content), "'\n"; 
     # MARC21: 245
     if ( defined($tempo_title) ) {
 	&process_title($tempo_title, $tempo_data_ref, $marc_record_ref, \@languages, $tempo_record_id, $is_host, \%t773);
@@ -3311,28 +3313,48 @@ sub create_host_field_505($) {
 sub derive_missing_authors($) {
     my ( $records_ref ) = @_;
     my @comps = @{$records_ref};
-    if ( scalar(@comps) < 2 ) { return; }
+    if ( scalar(@comps) < 2 ) { return; } # Require host+1
     my $host = shift @comps; # remove host from comp array
     
     my @host_author_fields = $host->get_all_matching_fields('[17][01]0');
     my @host_511 = $host->get_all_matching_fields('511');
     
     if ( scalar(@host_author_fields) == 0 ) { return; }
-
+   
     for (my $i=0; $i < scalar(@comps); $i++ ) {
 	my @comp_author_fields = $comps[$i]->get_all_matching_fields('[17][01]0');
+	my @comp_511 = $comps[$i]->get_all_matching_fields('511');
 	# Copy author fields from host:
 	if ( scalar(@comp_author_fields) == 0 ) {
+	    print STDERR "COMP: Derive authors from HOST\n";
+	    # TODO: säveltäjät pitää nostaa ekoiksi (100-osakenttään)
+	    my $has_1XX_saveltaja = 0;
 	    foreach my $author_field ( @host_author_fields ) {
 		my $curr_tag = $author_field->{tag};
-		if ( $author_field->{content} !~ /\x1Fesäveltäjä/ ) {
-		    $curr_tag =~ s/^1/7/;
+		if ( $curr_tag =~ /^1/ ) {
+		    if ( $author_field->{content} !~ /\x1Fesäveltäjä/ ) {
+			$curr_tag =~ s/^1/7/;
+		    }
+		    else {
+			$has_1XX_saveltaja = 1;
+		    }
+		}
+		elsif (  $author_field->{content} =~ /\x1Fesäveltäjä/ ) {
+		    die(); # Breakpoint. Remove after testing.
+		    $curr_tag =~ s/^7/1/; # Raise first säveltäjä to 100/110
+		    
 		}
 		$comps[$i]->add_field($curr_tag, $author_field->{content});
 	    }
-	    foreach my $author_field ( @host_511 ) {
-		$comps[$i]->add_field($author_field->{tag}, $author_field->{content});
+
+
+	    if ( scalar(@host_511) > 0 && scalar(@comp_511) == 0 ) {
+		foreach my $author_field ( @host_511 ) {
+		    $comps[$i]->add_field($author_field->{tag}, $author_field->{content});
+		    print STDERR $author_field->toString, "\n";
+		}
 	    }
+
 	    $comps[$i]->add_field('588', "0 \x1FaTekijätiedot emotietueesta.");
 	}
 
@@ -3410,7 +3432,7 @@ if ( $#ARGV == -1 && $#input_files == -1 ) {
     usage();
 }
 
-# TODO: Fix 240 both in<dicators
+# TODO: Fix 240 both indicators
 
 
 # Talletusvuosi    FONO-112 recording_year      TODO
