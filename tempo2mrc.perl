@@ -298,7 +298,7 @@ sub get_tempo_id_from_marc_record($) {
 
 my $yhtyeen = "(?:muut )?(?:jousikvartetin|jousikvintetin|jousisekstetin|kamariorkesterin|kamariyhtyeen|kuoron|kuoron ja orkesterin|lauluyhtyeen|orkesterin|säestävän yhtyeen|yhtyeen)(?: muut)?";
 my $rooli = "(?:levyllä esiintyvät |mahdollinen |muut? )?(?:avustajat?|esittäjät?|jäsen|jäsenet|jäseniä|mahdollinen avustaja|muusikot|soitinsolistit|solistit|soololaulaja|säestävät muusikot|taustalaulajat)";
-my $jossakin = "(?:teoskohtaisesti )?(?:albumin |levyn )?(?:albumitasolla|esittelylehtisessä|kannessa|kansilehdessä|oheislehtisessä|oheistiedoissa|sisäkannessa|tekstilehtisessä|tiedoissa|yleistietodokumentissa)";
+my $jossakin = "(?:teoskohtaisesti )?(?:albumin |levyn )?(?:albumitasolla|esittelylehtisessä|kannessa|kansilehdessä|oheislehtisessä|oheistiedoissa|sisäkannessa|tekstilehtisessä|tiedois[st]a|yleistietodokumentissa)";
 
 
 sub description_cleanup($) {
@@ -309,9 +309,9 @@ sub description_cleanup($) {
     ${$description_ref} =~ s/^ +//gm;
     ${$description_ref} =~ s/ +$//gm;
     print STDERR "DC: '", ${$description_ref}, "'\n";
-    while ( ${$description_ref} =~ s/(^|\. |  )(?:$yhtyeen )?(?:$rooli|$rooli ja $rooli) lueteltu (?:$jossakin(?:( ja| sekä) $jossakin)?|$pikkukirjain+)(?:$|\.)/$1/im ) {
+    while ( ${$description_ref} =~ s/(^|\. |  |, )(?:$yhtyeen )?(?:$rooli|$rooli ja $rooli) lueteltu (?:$jossakin(?:( ja| sekä) $jossakin)?|$pikkukirjain+)(?:$|\.)/$1/im ) {
 	${$description_ref} =~ s/^ +//gm;
-	#${$description_ref} =~ s/ +$//gm;
+	${$description_ref} =~ s/,? +$//gm;
 	${$description_ref} =~ s/ +/ /gm;	
     }
 }
@@ -650,13 +650,13 @@ sub description2musicians($$) {
 
     if ( ${$description_ref} =~ s/^(.*) ja (.*?)\. (?:Muut jäsenet|Yhtyeen muut jäsenet): (.*)$// ) {
 	my $musicians = "$1 ja $2: $1, $3";
-	die($musicians);
 	normalize_musicians(\$musicians);
 	return $musicians;
     }
     # Emil Brandqvist Trio. Muut jäsenet: Max Thornberg (kontrabasso). Tuomas Turunen (piano).
     # FAIL: 'Max De Aloe Baltic Trio. Muut jäsenet: Niklas Winter (kitara), Jesper Bodilsen (kontrabasso).' # p.o. "Max De Aloe (Baltic Trio)" tma.
     if ( ${$description_ref} =~ s/^(Max De Aloe) (Baltic Trio)\. Muut jäsenet: (.*)$// ||
+	 ${$description_ref} =~ s/^(Masa Orpana) (Honk)\. Muut jäsenet: (.*)$// ||
 	${$description_ref} =~ s/^(\S+(?: \S+)+) (Trio)\. Muut jäsenet: (.*)$// ) {
 	my $musicians = "$1 $2: $1, $3";
 	normalize_musicians(\$musicians);
