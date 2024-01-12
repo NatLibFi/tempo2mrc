@@ -28,6 +28,8 @@ sub extract_media_from_title($$) {
 	return $value.' CD-äänilevyä';
     }
 
+    if ( ${$title_ref} eq 'RASKASTA JOULUA (10-VUOTISJUHLAVERSIO)' ) { return undef; } # Final version, so apply quick and dirty fix
+
     if ( ${$title_ref} =~ s/\s*\(([2-9]|[1-9][0-9]+)[^\)]+\)// ) {
 	die($1);
     }    
