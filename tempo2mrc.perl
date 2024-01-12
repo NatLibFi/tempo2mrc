@@ -3322,31 +3322,35 @@ sub derive_missing_authors($) {
     if ( scalar(@host_author_fields) == 0 ) { return; }
    
     for (my $i=0; $i < scalar(@comps); $i++ ) {
+
 	my @comp_author_fields = $comps[$i]->get_all_matching_fields('[17][01]0');
+	
 	my @comp_511 = $comps[$i]->get_all_matching_fields('511');
 	# Copy author fields from host:
 	if ( scalar(@comp_author_fields) == 0 ) {
 	    print STDERR "COMP: Derive authors from HOST\n";
 	    # TODO: säveltäjät pitää nostaa ekoiksi (100-osakenttään)
 	    my $has_1XX_saveltaja = 0;
-	    foreach my $author_field ( @host_author_fields ) {
+
+	    my @host_author_fields_composers = grep { $_->{content} =~ /\x1Fesäveltäjä/ } @host_author_fields;
+	    my @host_author_fields_others = grep { $_->{content} !~ /\x1Fesäveltäjä/ } @host_author_fields;
+
+	    my $hundred = '1';
+
+	    foreach my $author_field ( @host_author_fields_composers ) {
 		my $curr_tag = $author_field->{tag};
-		if ( $curr_tag =~ /^1/ ) {
-		    if ( $author_field->{content} !~ /\x1Fesäveltäjä/ ) {
-			$curr_tag =~ s/^1/7/;
-		    }
-		    else {
-			$has_1XX_saveltaja = 1;
-		    }
-		}
-		elsif (  $author_field->{content} =~ /\x1Fesäveltäjä/ ) {
-		    die(); # Breakpoint. Remove after testing.
-		    $curr_tag =~ s/^7/1/; # Raise first säveltäjä to 100/110
-		    
-		}
-		$comps[$i]->add_field($curr_tag, $author_field->{content});
+		$curr_tag =~ s/^./$hundred/;
+		$hundred = '7';
+		my $field = $comps[$i]->add_field($curr_tag, $author_field->{content});
+		#die($field->toString());
 	    }
 
+	    foreach my $author_field ( @host_author_fields_others ) {
+		my $curr_tag = $author_field->{tag};
+		$curr_tag =~ s/^./7/;
+		my $field = $comps[$i]->add_field($curr_tag, $author_field->{content});
+
+	    }
 
 	    if ( scalar(@host_511) > 0 && scalar(@comp_511) == 0 ) {
 		foreach my $author_field ( @host_511 ) {
